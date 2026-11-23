@@ -23,17 +23,33 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #ticker{max-width:230px}
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
 .tfs button{padding:4px 7px;min-width:36px}
-.tools{display:flex;gap:4px;align-items:center;padding-left:8px;border-left:1px solid var(--grid)}
-.tools button{padding:4px 8px;font-weight:600}
-.tools label{font-size:11px;color:var(--muted)}
-.tools input{width:52px;padding:4px 6px;text-align:center}
+.btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
+.btn-db-main.active{background:linear-gradient(135deg,#20BC22,#128a14) !important;color:#fff !important;border-color:#20BC22 !important}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+
+/* Панель настроек Darvas */
+#db-panel{display:none;background:#0f1420;border-bottom:2px solid var(--accent);padding:10px 12px;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;z-index:4}
+#db-panel.open{display:flex}
+#db-panel .grp{display:flex;align-items:center;gap:6px;padding-right:10px;border-right:1px solid #2a323d}
+#db-panel .grp:last-child{border-right:none}
+#db-panel label{font-size:11px;color:var(--muted);white-space:nowrap}
+#db-panel input[type=number]{width:60px;text-align:center;padding:4px 6px}
+#db-panel input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+#db-panel button{padding:4px 8px;font-size:11px}
+#db-panel .hint{color:var(--muted);font-size:11px;font-style:italic}
+#db-panel .color-btn{padding:4px 10px !important;font-weight:600 !important}
+#db-panel .color-btn[data-color=green]{background:#20BC22;color:#000;border-color:#20BC22}
+#db-panel .color-btn[data-color=red]{background:#FF1919;color:#fff;border-color:#FF1919}
+#db-panel .color-btn[data-color=orange]{background:#FFB522;color:#000;border-color:#FFB522}
+
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
 #ohlc span{color:var(--muted)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(19,23,34,.6);pointer-events:none}
 #loading.hide{display:none}
+#db-badge{position:absolute;top:8px;right:70px;background:rgba(32,188,34,.9);color:#000;font-weight:700;font-size:11px;padding:4px 8px;border-radius:4px;display:none;pointer-events:none;z-index:2}
+#db-badge.on{display:block}
 </style>
 </head>
 <body>
@@ -44,19 +60,49 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <input id="search" placeholder="поиск: SBER / Сбер" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
-<div class="tools">
-<button id="btn-db" title="Darvas Box">DB</button>
-<label for="db-len">длина</label>
-<input id="db-len" type="number" min="2" max="200" value="10">
-</div>
+<button id="btn-db" class="btn-db-main" title="Открыть настройки Darvas Box">📦 Darvas Box</button>
 <div id="status">Загрузка…</div>
 </header>
+
+<!-- Панель настроек Darvas Box -->
+<div id="db-panel">
+  <div class="grp">
+    <input type="checkbox" id="db-enabled">
+    <label for="db-enabled" style="font-size:12px;color:var(--text);font-weight:600">Показывать на графике</label>
+  </div>
+  <div class="grp">
+    <label for="db-len">Длина бокса:</label>
+    <input type="number" id="db-len" min="2" max="200" value="10">
+    <button id="db-reset" title="Сбросить к 10">10</button>
+  </div>
+  <div class="grp">
+    <label>Толщина:</label>
+    <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
+  </div>
+  <div class="grp">
+    <label>Заливка:</label>
+    <input type="number" id="db-opacity" min="0" max="50" step="5" value="10">
+    <span style="color:var(--muted);font-size:11px">%</span>
+  </div>
+  <div class="grp">
+    <label>Цвета:</label>
+    <button class="color-btn" data-color="green" id="col-green">▲</button>
+    <button class="color-btn" data-color="red" id="col-red">▼</button>
+    <button class="color-btn" data-color="orange" id="col-orange">—</button>
+  </div>
+  <div class="grp">
+    <span class="hint">По умолчанию индикатор выключен. Поставьте галочку — боксы появятся.</span>
+  </div>
+</div>
+
 <div id="chartWrap">
 <canvas id="cv"></canvas>
 <div id="ohlc"></div>
+<div id="db-badge">Darvas 10</div>
 <div id="loading">Загрузка графика…</div>
 </div>
 </div>
+
 <script>
 (function(){
 'use strict';
@@ -226,18 +272,12 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* =========================================================
-   DARVAS BOX — порт PineScript v4
-   ========================================================= */
+/* ============= DARVAS BOX — порт Pine ============= */
 function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
 if(n<boxp+2||boxp<2)return boxes;
 
-// k1 = highest(high, boxp)
-// k2 = highest(high, boxp-1)
-// k3 = highest(high, boxp-2)
-// LL = lowest(low, boxp)
 var k1=new Array(n),k2=new Array(n),k3=new Array(n),LL=new Array(n);
 for(var i=0;i<n;i++){
 var s1=Math.max(0,i-boxp+1);
@@ -250,15 +290,7 @@ for(var j3=s3;j3<=i;j3++){if(candles[j3].h>mx3)mx3=candles[j3].h;}
 k1[i]=mx1;k2[i]=mx2;k3[i]=mx3;LL[i]=mn;
 }
 
-// NH = valuewhen(high > k1[1], high, 0)
-// barsSince = barssince(high > k1[1])
-// box1 = k3 < k2
-// TopBox = valuewhen(barsSince == boxp-2 and box1, NH, 0)
-// BottomBox = valuewhen(barsSince == boxp-2 and box1, LL, 0)
-var nh=NaN;
-var barsSince=-1; // ещё не было
-var topBox=NaN,bottomBox=NaN;
-var topBoxPrev=NaN,bottomBoxPrev=NaN;
+var nh=NaN,barsSince=-1,topBox=NaN,bottomBox=NaN,topBoxPrev=NaN,bottomBoxPrev=NaN;
 var activeBox=null;
 
 for(var i=0;i<n;i++){
@@ -270,8 +302,7 @@ var box1=k3[i]<k2[i];
 topBoxPrev=topBox;bottomBoxPrev=bottomBox;
 
 if(barsSince===boxp-2 && box1){
-topBox=nh;
-bottomBox=LL[i];
+topBox=nh;bottomBox=LL[i];
 }
 
 var changed=false;
@@ -280,10 +311,7 @@ if(isNaN(topBoxPrev)||topBox!==topBoxPrev||bottomBox!==bottomBoxPrev)changed=tru
 }
 
 if(changed){
-if(activeBox && activeBox.left<i){
-activeBox.right=i-1;
-boxes.push(activeBox);
-}
+if(activeBox && activeBox.left<i){activeBox.right=i-1;boxes.push(activeBox);}
 activeBox={left:i,right:i,top:topBox,bottom:bottomBox};
 }else if(activeBox){
 activeBox.right=i;
@@ -298,9 +326,7 @@ if(!state.candles.length){state.db.boxes=[];return;}
 state.db.boxes=computeDarvas(state.candles,state.db.boxp);
 }
 
-/* =========================================================
-   STATE
-   ========================================================= */
+/* ============= STATE ============= */
 var state={
 ticker:'SBER',
 tfKey:'1d',
@@ -310,14 +336,12 @@ view:{start:0,end:0},
 loading:false,
 lastUpdate:0,
 err:'',
-db:{enabled:false,boxp:10,boxes:[]}
+db:{enabled:false,boxp:10,thickness:1.5,opacity:10,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
 
-/* =========================================================
-   UI
-   ========================================================= */
+/* ============= UI ============= */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
@@ -351,41 +375,109 @@ if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();
 }
 });
 
-// Darvas controls
-$('#btn-db').addEventListener('click',function(){
-state.db.enabled=!state.db.enabled;
-this.classList.toggle('active',state.db.enabled);
-try{localStorage.setItem('db_enabled',state.db.enabled?'1':'0');}catch(e){}
+/* Открыть/закрыть панель Darvas */
+$('#btn-db').addEventListener('click',function(e){
+e.stopPropagation();
+var panel=$('#db-panel');
+var open=!panel.classList.contains('open');
+panel.classList.toggle('open',open);
+});
+
+/* Чекбокс вкл/выкл */
+$('#db-enabled').addEventListener('change',function(e){
+state.db.enabled=e.target.checked;
+saveDbSettings();
+$('#btn-db').classList.toggle('active',state.db.enabled);
+$('#db-badge').classList.toggle('on',state.db.enabled);
 if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
 draw();
 });
+
+/* Длина */
 $('#db-len').addEventListener('change',function(e){
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
 e.target.value=v;
 state.db.boxp=v;
-try{localStorage.setItem('db_boxp',String(v));}catch(err){}
+saveDbSettings();
 if(state.db.enabled)recomputeDarvas();
 draw();
 });
-$('#db-len').addEventListener('input',function(e){
-var v=parseInt(e.target.value,10);
-if(!v||v<2||v>200)return;
-state.db.boxp=v;
-try{localStorage.setItem('db_boxp',String(v));}catch(err){}
-if(state.db.enabled){recomputeDarvas();draw();}
+
+/* Сброс к 10 */
+$('#db-reset').addEventListener('click',function(){
+$('#db-len').value=10;
+state.db.boxp=10;
+saveDbSettings();
+if(state.db.enabled)recomputeDarvas();
+draw();
 });
+
+/* Толщина */
+$('#db-thick').addEventListener('change',function(e){
+var v=parseFloat(e.target.value)||1.5;
+v=Math.max(1,Math.min(6,v));
+e.target.value=v;
+state.db.thickness=v;
+saveDbSettings();
+draw();
+});
+
+/* Прозрачность */
+$('#db-opacity').addEventListener('change',function(e){
+var v=parseInt(e.target.value,10);
+if(isNaN(v))v=10;
+v=Math.max(0,Math.min(50,v));
+e.target.value=v;
+state.db.opacity=v;
+saveDbSettings();
+draw();
+});
+
+/* Цвета — переключатели-заглушки, показывают, что цвета такие же как в Pine */
+$('#col-green').addEventListener('click',function(){toast('Зелёный: пробой вверх (close > top)');});
+$('#col-red').addEventListener('click',function(){toast('Красный: пробой вниз (close < bottom)');});
+$('#col-orange').addEventListener('click',function(){toast('Оранжевый: цена внутри бокса');});
 }
 
+/* Маленькое всплывающее сообщение */
+var toastT=null;
+function toast(msg){
+var el=document.getElementById('toast');
+if(!el){
+el=document.createElement('div');
+el.id='toast';
+el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(240,160,32,.95);color:#111;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;z-index:999;pointer-events:none;transition:opacity .3s;opacity:0';
+document.body.appendChild(el);
+}
+el.textContent=msg;
+el.style.opacity='1';
+if(toastT)clearTimeout(toastT);
+toastT=setTimeout(function(){el.style.opacity='0';},2500);
+}
+
+function saveDbSettings(){
+try{
+localStorage.setItem('db_enabled',state.db.enabled?'1':'0');
+localStorage.setItem('db_boxp',String(state.db.boxp));
+localStorage.setItem('db_thick',String(state.db.thickness));
+localStorage.setItem('db_opacity',String(state.db.opacity));
+}catch(e){}
+}
 function loadDbSettings(){
 try{
-var e=localStorage.getItem('db_enabled');
-if(e==='1')state.db.enabled=true;
-var v=localStorage.getItem('db_boxp');
-if(v){var n=parseInt(v,10);if(n>=2&&n<=200)state.db.boxp=n;}
-}catch(err){}
-$('#btn-db').classList.toggle('active',state.db.enabled);
+if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;
+var v=localStorage.getItem('db_boxp');if(v){var n=parseInt(v,10);if(n>=2&&n<=200)state.db.boxp=n;}
+var t=localStorage.getItem('db_thick');if(t){var f=parseFloat(t);if(f>=1&&f<=6)state.db.thickness=f;}
+var o=localStorage.getItem('db_opacity');if(o){var p=parseInt(o,10);if(p>=0&&p<=50)state.db.opacity=p;}
+}catch(e){}
+$('#db-enabled').checked=state.db.enabled;
 $('#db-len').value=state.db.boxp;
+$('#db-thick').value=state.db.thickness;
+$('#db-opacity').value=state.db.opacity;
+$('#btn-db').classList.toggle('active',state.db.enabled);
+$('#db-badge').classList.toggle('on',state.db.enabled);
+$('#db-badge').textContent='Darvas '+state.db.boxp;
 }
 
 function setStatus(html,isErr){
@@ -504,9 +596,7 @@ refreshStatus();
 });
 }
 
-/* =========================================================
-   CANVAS
-   ========================================================= */
+/* ============= CANVAS ============= */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -528,8 +618,6 @@ var s=Math.max(0,Math.min(state.view.start,c.length-1));
 var e=Math.max(s,Math.min(state.view.end,c.length-1));
 var mn=Infinity,mx=-Infinity;
 for(var i=s;i<=e;i++){var k=c[i];if(k.l<mn)mn=k.l;if(k.h>mx)mx=k.h;}
-
-// Учитываем боксы Darvas в диапазоне, чтобы они не уходили за экран
 if(state.db.enabled && state.db.boxes.length){
 for(var b=0;b<state.db.boxes.length;b++){
 var bx=state.db.boxes[b];
@@ -538,7 +626,6 @@ if(bx.top>mx)mx=bx.top;
 if(bx.bottom<mn)mn=bx.bottom;
 }
 }
-
 if(!isFinite(mn)||!isFinite(mx))return {min:0,max:1};
 var pad=(mx-mn)*0.08||Math.abs(mx)*0.01||1;
 return {min:mn-pad,max:mx+pad};
@@ -561,7 +648,6 @@ ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
 }
 drawGrid(rect,rng,visible);
 
-// Боксы Darvas — рисуются под свечами, чтобы тела были видны
 if(state.db.enabled && state.db.boxes.length)drawDarvas(rect,rng,s,visible.length);
 
 var count=visible.length;
@@ -586,24 +672,19 @@ ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(rect.x+rect.w,lastY);ctx.str
 drawPriceTag(lastY,last.c,rect);
 ctx.fillStyle=getCss('--muted');ctx.font='12px sans-serif';ctx.textAlign='left';
 var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.';
-if(state.db.enabled)label+=' · DB('+state.db.boxp+')';
 ctx.fillText(label,rect.x+6,rect.y+14);
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
 }
 
-/* =========================================================
-   DARVAS BOX — отрисовка
-   ========================================================= */
+/* DARVAS BOX — отрисовка */
 function drawDarvas(rect,rng,startIdx,visibleCount){
 var boxes=state.db.boxes;
 var slot=rect.w/visibleCount;
+var endIdx=startIdx+visibleCount-1;
 
 for(var i=0;i<boxes.length;i++){
 var b=boxes[i];
-
-// Отсекаем боксы, которые не пересекаются с видимым диапазоном
-var endIdx=startIdx+visibleCount-1;
 if(b.right<startIdx || b.left>endIdx)continue;
 
 var relLeft=Math.max(0, b.left-startIdx);
@@ -614,24 +695,23 @@ var x2=rect.x+(relRight+1)*slot;
 var yTop=yForPrice(b.top,rect,rng);
 var yBottom=yForPrice(b.bottom,rect,rng);
 
-// Цвет по close последней свечи бокса (как в Pine: close > top ? green : close < bottom ? red : orange)
 var lastC=state.candles[b.right].c;
 var r,g,bl;
-if(lastC>b.top){r=32;g=188;bl=34;}          // зелёный
-else if(lastC<b.bottom){r=255;g=25;bl=25;}  // красный
-else{r=255;g=181;bl=34;}                    // оранжевый
+if(lastC>b.top){r=32;g=188;bl=34;}
+else if(lastC<b.bottom){r=255;g=25;bl=25;}
+else{r=255;g=181;bl=34;}
 
+var opacity=state.db.opacity/100;
 ctx.save();
-ctx.fillStyle='rgba('+r+','+g+','+bl+',0.10)';
+ctx.fillStyle='rgba('+r+','+g+','+bl+','+opacity+')';
 ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';
-ctx.lineWidth=1.5;
+ctx.lineWidth=state.db.thickness;
 ctx.fillRect(x1,yTop,x2-x1,yBottom-yTop);
 ctx.strokeRect(x1,yTop,x2-x1,yBottom-yTop);
 
-// подписи top/bottom у правого края бокса (только если видим и бокс не активный-последний)
 if(x2-x1>60 && Math.abs(yBottom-yTop)>14){
 ctx.font='10px sans-serif';
-ctx.fillStyle='rgba('+r+','+g+','+bl+',0.95)';
+ctx.fillStyle='rgba('+r+','+g+','+bl+',1)';
 ctx.textAlign='right';
 ctx.fillText(fmtNum(b.top), x2-3, yTop+11);
 ctx.textAlign='left';
@@ -641,9 +721,7 @@ ctx.restore();
 }
 }
 
-/* =========================================================
-   Остальное рисование
-   ========================================================= */
+/* Остальное */
 function drawCountdownAtLastCandle(rect,rng,visible){
 var c=visible[visible.length-1];if(!c)return;
 var closeMs=candleCloseMs();if(!closeMs)return;
