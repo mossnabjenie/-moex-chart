@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
 <style>
-:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
+:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694;--db-green:#20BC22;--db-red:#FF1919;--db-orange:#FFB522}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%}
@@ -23,6 +23,10 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #ticker{max-width:230px}
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
 .tfs button{padding:4px 7px;min-width:36px}
+.tools{display:flex;gap:4px;align-items:center;padding-left:8px;border-left:1px solid var(--grid)}
+.tools button{padding:4px 8px;font-weight:600}
+.tools label{font-size:11px;color:var(--muted)}
+.tools input{width:52px;padding:4px 6px;text-align:center}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
@@ -40,6 +44,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <input id="search" placeholder="поиск: SBER / Сбер" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
+<div class="tools">
+<button id="btn-db" title="Darvas Box">DB</button>
+<label for="db-len">длина</label>
+<input id="db-len" type="number" min="2" max="200" value="10">
+</div>
 <div id="status">Загрузка…</div>
 </header>
 <div id="chartWrap">
@@ -127,7 +136,6 @@ return list;
 });
 }
 
-/* Сколько свечей в торговом дне */
 function candlesPerDay(tf){
 if(tf.iss===24)return 1;
 if(tf.iss===7)return 1/5;
@@ -135,11 +143,6 @@ if(tf.iss===31)return 1/22;
 return 480/(tf.iss*(tf.agg||1));
 }
 
-/*
- * ГЛАВНОЕ ИСПРАВЛЕНИЕ:
- * iss.reverse=true — start=0 отдаёт САМЫЕ НОВЫЕ свечи.
- * Сначала берём последние, потом расширяем назад.
- */
 function fetchRangeReverse(ticker, tf, fromStr, tillStr, maxRows){
 var all=[],start=0,guard=0;
 function step(){
@@ -168,10 +171,6 @@ return step();
 return step();
 }
 
-/*
- * Загрузка: сначала последние 1500 свечей (reverse),
- * затем расширение истории назад, пока не наберём targetMax.
- */
 function loadAll(ticker, tf, targetMax, onProgress){
 var collected={};
 var today=todayStr();
@@ -203,7 +202,6 @@ return arr;
 });
 }
 
-/* Только хвост — для автообновления (reverse, последние n свечей) */
 function loadTail(ticker, tf, nCandles){
 var cpd=candlesPerDay(tf);
 var days=Math.max(2,Math.ceil(nCandles/cpd*1.6));
@@ -228,10 +226,98 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-var state={ticker:'SBER',tfKey:'1d',candles:[],rawIss:[],view:{start:0,end:0},loading:false,lastUpdate:0,err:''};
+/* =========================================================
+   DARVAS BOX — порт PineScript v4
+   ========================================================= */
+function computeDarvas(candles, boxp){
+var n=candles.length;
+var boxes=[];
+if(n<boxp+2||boxp<2)return boxes;
+
+// k1 = highest(high, boxp)
+// k2 = highest(high, boxp-1)
+// k3 = highest(high, boxp-2)
+// LL = lowest(low, boxp)
+var k1=new Array(n),k2=new Array(n),k3=new Array(n),LL=new Array(n);
+for(var i=0;i<n;i++){
+var s1=Math.max(0,i-boxp+1);
+var s2=Math.max(0,i-boxp+2);
+var s3=Math.max(0,i-boxp+3);
+var mx1=-Infinity,mx2=-Infinity,mx3=-Infinity,mn=Infinity;
+for(var j=s1;j<=i;j++){if(candles[j].h>mx1)mx1=candles[j].h;if(candles[j].l<mn)mn=candles[j].l;}
+for(var j2=s2;j2<=i;j2++){if(candles[j2].h>mx2)mx2=candles[j2].h;}
+for(var j3=s3;j3<=i;j3++){if(candles[j3].h>mx3)mx3=candles[j3].h;}
+k1[i]=mx1;k2[i]=mx2;k3[i]=mx3;LL[i]=mn;
+}
+
+// NH = valuewhen(high > k1[1], high, 0)
+// barsSince = barssince(high > k1[1])
+// box1 = k3 < k2
+// TopBox = valuewhen(barsSince == boxp-2 and box1, NH, 0)
+// BottomBox = valuewhen(barsSince == boxp-2 and box1, LL, 0)
+var nh=NaN;
+var barsSince=-1; // ещё не было
+var topBox=NaN,bottomBox=NaN;
+var topBoxPrev=NaN,bottomBoxPrev=NaN;
+var activeBox=null;
+
+for(var i=0;i<n;i++){
+var k1Prev=(i>0)?k1[i-1]:-Infinity;
+if(i>0 && candles[i].h>k1Prev){nh=candles[i].h;barsSince=0;}
+else if(barsSince>=0){barsSince++;}
+
+var box1=k3[i]<k2[i];
+topBoxPrev=topBox;bottomBoxPrev=bottomBox;
+
+if(barsSince===boxp-2 && box1){
+topBox=nh;
+bottomBox=LL[i];
+}
+
+var changed=false;
+if(!isNaN(topBox)&&!isNaN(bottomBox)){
+if(isNaN(topBoxPrev)||topBox!==topBoxPrev||bottomBox!==bottomBoxPrev)changed=true;
+}
+
+if(changed){
+if(activeBox && activeBox.left<i){
+activeBox.right=i-1;
+boxes.push(activeBox);
+}
+activeBox={left:i,right:i,top:topBox,bottom:bottomBox};
+}else if(activeBox){
+activeBox.right=i;
+}
+}
+if(activeBox)boxes.push(activeBox);
+return boxes;
+}
+
+function recomputeDarvas(){
+if(!state.candles.length){state.db.boxes=[];return;}
+state.db.boxes=computeDarvas(state.candles,state.db.boxp);
+}
+
+/* =========================================================
+   STATE
+   ========================================================= */
+var state={
+ticker:'SBER',
+tfKey:'1d',
+candles:[],
+rawIss:[],
+view:{start:0,end:0},
+loading:false,
+lastUpdate:0,
+err:'',
+db:{enabled:false,boxp:10,boxes:[]}
+};
 var securities=[];
 var refreshTimer=null;
 
+/* =========================================================
+   UI
+   ========================================================= */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
@@ -242,6 +328,7 @@ sel.innerHTML=items.map(function(s){return '<option value="'+esc(s.sec)+'">'+esc
 if(items.some(function(s){return s.sec===cur;}))sel.value=cur;
 else if(items.length)sel.value=items[0].sec;
 }
+
 function setupUi(){
 var tfs=$('#tfs');
 tfs.innerHTML=TF_LIST.map(function(t){return '<button data-tf="'+t.key+'" class="'+(t.key===state.tfKey?'active':'')+'">'+t.label+'</button>';}).join('');
@@ -263,7 +350,44 @@ var first=$('#ticker').options[0];
 if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();}
 }
 });
+
+// Darvas controls
+$('#btn-db').addEventListener('click',function(){
+state.db.enabled=!state.db.enabled;
+this.classList.toggle('active',state.db.enabled);
+try{localStorage.setItem('db_enabled',state.db.enabled?'1':'0');}catch(e){}
+if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
+draw();
+});
+$('#db-len').addEventListener('change',function(e){
+var v=parseInt(e.target.value,10)||10;
+v=Math.max(2,Math.min(200,v));
+e.target.value=v;
+state.db.boxp=v;
+try{localStorage.setItem('db_boxp',String(v));}catch(err){}
+if(state.db.enabled)recomputeDarvas();
+draw();
+});
+$('#db-len').addEventListener('input',function(e){
+var v=parseInt(e.target.value,10);
+if(!v||v<2||v>200)return;
+state.db.boxp=v;
+try{localStorage.setItem('db_boxp',String(v));}catch(err){}
+if(state.db.enabled){recomputeDarvas();draw();}
+});
 }
+
+function loadDbSettings(){
+try{
+var e=localStorage.getItem('db_enabled');
+if(e==='1')state.db.enabled=true;
+var v=localStorage.getItem('db_boxp');
+if(v){var n=parseInt(v,10);if(n>=2&&n<=200)state.db.boxp=n;}
+}catch(err){}
+$('#btn-db').classList.toggle('active',state.db.enabled);
+$('#db-len').value=state.db.boxp;
+}
+
 function setStatus(html,isErr){
 var el=$('#status');
 el.innerHTML=html;
@@ -339,6 +463,7 @@ var n=state.candles.length;
 state.view.end=n-1;
 state.view.start=Math.max(0,n-Math.min(120,n));
 state.lastUpdate=Date.now();
+if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
 refreshStatus();
 }).catch(function(e){
 state.err=(e&&e.message)?e.message:String(e);
@@ -368,6 +493,7 @@ if(wasAtEnd&&newLen>0){
 state.view.end=newLen-1;
 state.view.start=Math.max(0,state.view.end-visibleCount);
 }
+if(state.db.enabled)recomputeDarvas();
 state.lastUpdate=Date.now();
 state.err='';
 refreshStatus();
@@ -378,6 +504,9 @@ refreshStatus();
 });
 }
 
+/* =========================================================
+   CANVAS
+   ========================================================= */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -399,6 +528,17 @@ var s=Math.max(0,Math.min(state.view.start,c.length-1));
 var e=Math.max(s,Math.min(state.view.end,c.length-1));
 var mn=Infinity,mx=-Infinity;
 for(var i=s;i<=e;i++){var k=c[i];if(k.l<mn)mn=k.l;if(k.h>mx)mx=k.h;}
+
+// Учитываем боксы Darvas в диапазоне, чтобы они не уходили за экран
+if(state.db.enabled && state.db.boxes.length){
+for(var b=0;b<state.db.boxes.length;b++){
+var bx=state.db.boxes[b];
+if(bx.right<s || bx.left>e)continue;
+if(bx.top>mx)mx=bx.top;
+if(bx.bottom<mn)mn=bx.bottom;
+}
+}
+
 if(!isFinite(mn)||!isFinite(mx))return {min:0,max:1};
 var pad=(mx-mn)*0.08||Math.abs(mx)*0.01||1;
 return {min:mn-pad,max:mx+pad};
@@ -420,6 +560,10 @@ ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
 }
 drawGrid(rect,rng,visible);
+
+// Боксы Darvas — рисуются под свечами, чтобы тела были видны
+if(state.db.enabled && state.db.boxes.length)drawDarvas(rect,rng,s,visible.length);
+
 var count=visible.length;
 var slot=rect.w/count;
 var bw=Math.max(1,Math.min(14,slot*0.7));
@@ -441,11 +585,65 @@ ctx.save();ctx.strokeStyle=getCss('--accent');ctx.setLineDash([4,4]);
 ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(rect.x+rect.w,lastY);ctx.stroke();ctx.restore();
 drawPriceTag(lastY,last.c,rect);
 ctx.fillStyle=getCss('--muted');ctx.font='12px sans-serif';ctx.textAlign='left';
-ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
+var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.';
+if(state.db.enabled)label+=' · DB('+state.db.boxp+')';
+ctx.fillText(label,rect.x+6,rect.y+14);
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
 }
 
+/* =========================================================
+   DARVAS BOX — отрисовка
+   ========================================================= */
+function drawDarvas(rect,rng,startIdx,visibleCount){
+var boxes=state.db.boxes;
+var slot=rect.w/visibleCount;
+
+for(var i=0;i<boxes.length;i++){
+var b=boxes[i];
+
+// Отсекаем боксы, которые не пересекаются с видимым диапазоном
+var endIdx=startIdx+visibleCount-1;
+if(b.right<startIdx || b.left>endIdx)continue;
+
+var relLeft=Math.max(0, b.left-startIdx);
+var relRight=Math.min(visibleCount-1, b.right-startIdx);
+
+var x1=rect.x+relLeft*slot;
+var x2=rect.x+(relRight+1)*slot;
+var yTop=yForPrice(b.top,rect,rng);
+var yBottom=yForPrice(b.bottom,rect,rng);
+
+// Цвет по close последней свечи бокса (как в Pine: close > top ? green : close < bottom ? red : orange)
+var lastC=state.candles[b.right].c;
+var r,g,bl;
+if(lastC>b.top){r=32;g=188;bl=34;}          // зелёный
+else if(lastC<b.bottom){r=255;g=25;bl=25;}  // красный
+else{r=255;g=181;bl=34;}                    // оранжевый
+
+ctx.save();
+ctx.fillStyle='rgba('+r+','+g+','+bl+',0.10)';
+ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';
+ctx.lineWidth=1.5;
+ctx.fillRect(x1,yTop,x2-x1,yBottom-yTop);
+ctx.strokeRect(x1,yTop,x2-x1,yBottom-yTop);
+
+// подписи top/bottom у правого края бокса (только если видим и бокс не активный-последний)
+if(x2-x1>60 && Math.abs(yBottom-yTop)>14){
+ctx.font='10px sans-serif';
+ctx.fillStyle='rgba('+r+','+g+','+bl+',0.95)';
+ctx.textAlign='right';
+ctx.fillText(fmtNum(b.top), x2-3, yTop+11);
+ctx.textAlign='left';
+ctx.fillText(fmtNum(b.bottom), x2-3-(ctx.measureText(fmtNum(b.bottom)).width), yBottom-3);
+}
+ctx.restore();
+}
+}
+
+/* =========================================================
+   Остальное рисование
+   ========================================================= */
 function drawCountdownAtLastCandle(rect,rng,visible){
 var c=visible[visible.length-1];if(!c)return;
 var closeMs=candleCloseMs();if(!closeMs)return;
@@ -626,7 +824,9 @@ $('#ohlc').style.display='none';draw();
 },{passive:true});
 
 function init(){
-setupUi();resize();
+setupUi();
+loadDbSettings();
+resize();
 window.addEventListener('resize',resize);
 loadSecurities().then(function(list){
 securities=list;
