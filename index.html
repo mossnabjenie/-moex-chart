@@ -9,17 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
 <style>
-:root{
---bg:#080a0e;
---panel:#080a0e;
---chart-bg:#080a0e;
---grid:#0a0f16;
---text:#d7dde5;
---up:#26a69a;
---down:#ef5350;
---accent:#f0a020;
---muted:#7d8694;
-}
+:root{--bg:#080a0e;--panel:#080a0e;--chart-bg:#080a0e;--grid:#0a0f16;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%}
@@ -82,7 +72,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
   </div>
   <div class="grp">
-    <span class="hint">Колесо над графиком — зум влево. Колесо над шкалой цен — вертикальный зум. Зажать ЛКМ на шкале цен и тащить — тоже вертикальный зум. Двойной клик — сброс.</span>
+    <span class="hint">Зажать ЛКМ на шкале цен (↕) или времени (↔) и тащить — зум по оси. Двойной клик по шкале цен — сброс Y-zoom.</span>
   </div>
 </div>
 
@@ -108,12 +98,7 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
-var PRIORITY_GROUPS=[
-['VKCO'],
-['OZON'],
-['AFKS'],
-['X5','FIVE']
-];
+var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE']];
 
 var TF_LIST=[
 {key:'10m',label:'10м',iss:10,agg:1},
@@ -148,23 +133,20 @@ function fmtShort(ts){var d=new Date(ts);return pad2(d.getDate())+'.'+pad2(d.get
 function fmtHm(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());}
 
 function priorityRank(sec){
-for(var i=0;i<PRIORITY_GROUPS.length;i++){
-if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;
-}
+for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;}
 return 1000;
 }
 
 function fmtCountdown(ms){
 if(ms===0)return '—';
-var neg = ms < 0;
-var a = Math.abs(ms);
+var neg=ms<0;var a=Math.abs(ms);
 var s=Math.floor(a/1000);
 var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
 var str;
 if(h>=24)str=Math.floor(h/24)+'д '+pad2(h%24)+':'+pad2(m)+':'+pad2(sec);
 else if(h>0)str=pad2(h)+':'+pad2(m)+':'+pad2(sec);
 else str=pad2(m)+':'+pad2(sec);
-return neg ? '−'+str : str;
+return neg?'−'+str:str;
 }
 
 function fetchJson(url){
@@ -236,7 +218,6 @@ var today=todayStr();
 var cpd=candlesPerDay(tf);
 var startDays=Math.max(3,Math.ceil(1500/cpd*1.5));
 if(startDays>365*50)startDays=365*50;
-
 function step(days){
 var fromStr=daysAgoStr(days);
 var stillNeed=targetMax-Object.keys(collected).length;
@@ -251,7 +232,6 @@ var newDays=Math.min(Math.max(days*2, days+30),365*50);
 return step(newDays);
 });
 }
-
 return step(startDays).then(function(){
 var arr=[];
 for(var k in collected)arr.push(collected[k]);
@@ -310,7 +290,6 @@ function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
 if(n<boxp+2||boxp<2)return boxes;
-
 var k1=new Array(n),k2=new Array(n),k3=new Array(n),LL=new Array(n);
 for(var i=0;i<n;i++){
 var s1=Math.max(0,i-boxp+1);
@@ -322,27 +301,19 @@ for(var j2=s2;j2<=i;j2++){if(candles[j2].h>mx2)mx2=candles[j2].h;}
 for(var j3=s3;j3<=i;j3++){if(candles[j3].h>mx3)mx3=candles[j3].h;}
 k1[i]=mx1;k2[i]=mx2;k3[i]=mx3;LL[i]=mn;
 }
-
 var nh=NaN,barsSince=-1,topBox=NaN,bottomBox=NaN,topBoxPrev=NaN,bottomBoxPrev=NaN;
 var activeBox=null;
-
 for(var i2=0;i2<n;i2++){
 var k1Prev=(i2>0)?k1[i2-1]:-Infinity;
 if(i2>0 && candles[i2].h>k1Prev){nh=candles[i2].h;barsSince=0;}
 else if(barsSince>=0){barsSince++;}
-
 var box1=k3[i2]<k2[i2];
 topBoxPrev=topBox;bottomBoxPrev=bottomBox;
-
-if(barsSince===boxp-2 && box1){
-topBox=nh;bottomBox=LL[i2];
-}
-
+if(barsSince===boxp-2 && box1){topBox=nh;bottomBox=LL[i2];}
 var changed=false;
 if(!isNaN(topBox)&&!isNaN(bottomBox)){
 if(isNaN(topBoxPrev)||topBox!==topBoxPrev||bottomBox!==bottomBoxPrev)changed=true;
 }
-
 if(changed){
 if(activeBox && activeBox.left<i2){activeBox.right=i2-1;boxes.push(activeBox);}
 activeBox={left:i2,right:i2,top:topBox,bottom:bottomBox};
@@ -355,18 +326,9 @@ return boxes;
 }
 
 var state={
-ticker:'VKCO',
-tfKey:'10m',
-candles:[],
-rawIss:[],
-ema20:[],
-ema200:[],
-view:{start:0,end:0},
-viewPx:{min:0,max:0},
-manualPx:false,
-loading:false,
-lastUpdate:0,
-err:'',
+ticker:'VKCO',tfKey:'10m',candles:[],rawIss:[],ema20:[],ema200:[],
+view:{start:0,end:0},viewPx:{min:0,max:0},manualPx:false,
+loading:false,lastUpdate:0,err:'',
 db:{enabled:false,boxp:10,thickness:1.5,boxes:[]}
 };
 var securities=[];
@@ -409,12 +371,10 @@ var first=$('#ticker').options[0];
 if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();}
 }
 });
-
 $('#btn-db').addEventListener('click',function(e){
 e.stopPropagation();
 $('#db-panel').classList.toggle('open');
 });
-
 $('#db-enabled').addEventListener('change',function(e){
 state.db.enabled=e.target.checked;
 saveDbSettings();
@@ -423,7 +383,6 @@ $('#db-badge').classList.toggle('on',state.db.enabled);
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 draw();
 });
-
 $('#db-len').addEventListener('change',function(e){
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
@@ -434,7 +393,6 @@ $('#db-badge').textContent='Darvas '+v;
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
-
 $('#db-reset').addEventListener('click',function(){
 $('#db-len').value=10;
 state.db.boxp=10;
@@ -443,7 +401,6 @@ $('#db-badge').textContent='Darvas 10';
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
-
 $('#db-thick').addEventListener('change',function(e){
 var v=parseFloat(e.target.value)||1.5;
 v=Math.max(1,Math.min(6,v));
@@ -667,9 +624,7 @@ ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
 }
 drawGrid(rect,rng,visible);
-
 if(state.db.enabled && state.db.boxes.length)drawDarvas(rect,rng,s,visible.length);
-
 var count=visible.length;
 var slot=rect.w/count;
 var bw=Math.max(1,Math.min(14,slot*0.7));
@@ -685,10 +640,8 @@ var yO=yForPrice(k.o,rect,rng),yC=yForPrice(k.c,rect,rng);
 var top=Math.min(yO,yC),hh=Math.max(1,Math.abs(yC-yO));
 if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
-
 drawEMA(rect,rng,s,count,state.ema200,EMA200_COLOR,EMA_WIDTH);
 drawEMA(rect,rng,s,count,state.ema20,EMA20_COLOR,EMA_WIDTH);
-
 var last=visible[visible.length-1];
 var lastY=yForPrice(last.c,rect,rng);
 var axisX=priceAxisX(rect);
@@ -703,7 +656,6 @@ ctx.fillText(label,rect.x+6,rect.y+14);
 ctx.font='11px sans-serif';
 ctx.fillStyle=EMA20_COLOR;ctx.fillText('EMA20',rect.x+6,rect.y+28);
 ctx.fillStyle=EMA200_COLOR;ctx.fillText('EMA200',rect.x+60,rect.y+28);
-
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
 }
@@ -711,8 +663,7 @@ if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,vis
 function drawEMA(rect,rng,startIdx,visibleCount,arr,color,width){
 if(!arr||!arr.length)return;
 var slot=rect.w/visibleCount;
-ctx.save();
-ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineJoin='round';
+ctx.save();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineJoin='round';
 ctx.beginPath();
 var started=false;
 for(var i=0;i<visibleCount;i++){
@@ -724,8 +675,7 @@ var y=yForPrice(v,rect,rng);
 if(!started){ctx.moveTo(x,y);started=true;}
 else ctx.lineTo(x,y);
 }
-ctx.stroke();
-ctx.restore();
+ctx.stroke();ctx.restore();
 }
 
 function drawDarvas(rect,rng,startIdx,visibleCount){
@@ -775,16 +725,9 @@ if(x+w>rect.x+rect.w-2)x=rect.x+rect.w-2-w;
 var y=yHigh-h-6;
 if(y<rect.y+2)y=yLow+6;
 if(y+h>rect.y+rect.h-2)y=rect.y+rect.h-2-h;
-if(isLag){
-ctx.fillStyle='rgba(239,83,80,0.92)';
-ctx.strokeStyle='#b71c1c';
-}else if(left===0){
-ctx.fillStyle='rgba(125,134,148,0.5)';
-ctx.strokeStyle=getCss('--muted');
-}else{
-ctx.fillStyle='rgba(240,160,32,0.92)';
-ctx.strokeStyle='#c98a1a';
-}
+if(isLag){ctx.fillStyle='rgba(239,83,80,0.92)';ctx.strokeStyle='#b71c1c';}
+else if(left===0){ctx.fillStyle='rgba(125,134,148,0.5)';ctx.strokeStyle=getCss('--muted');}
+else{ctx.fillStyle='rgba(240,160,32,0.92)';ctx.strokeStyle='#c98a1a';}
 ctx.fillRect(x,y,w,h);
 ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);
 ctx.fillStyle=isLag?'#fff':(left===0?getCss('--muted'):'#111');
@@ -839,24 +782,29 @@ ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 
 var hover={active:false,x:0,y:0};
 
+/* ====== Курсор по зонам ====== */
+function updateCursor(mx,my){
+if(dragY){cv.style.cursor='ns-resize';return;}
+if(dragX){cv.style.cursor='ew-resize';return;}
+if(drag){cv.style.cursor='grabbing';return;}
+var rect=plotRect();
+var axisX=priceAxisX(rect);
+if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){cv.style.cursor='ns-resize';return;}
+if(my>=rect.y+rect.h && my<=cssH && mx>=rect.x && mx<=axisX){cv.style.cursor='ew-resize';return;}
+cv.style.cursor='crosshair';
+}
+
 cv.addEventListener('mousemove',function(e){
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
 var my=e.clientY-r.top;
 hover.active=true;hover.x=mx;hover.y=my;
 updateHoverCandle();draw();
-if(!dragY&&!drag){
-var rect=plotRect();
-var axisX=priceAxisX(rect);
-if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){
-cv.style.cursor='ns-resize';
-}else{
-cv.style.cursor='crosshair';
-}
-}
+updateCursor(mx,my);
 });
 cv.addEventListener('mouseleave',function(){
 hover.active=false;$('#ohlc').style.display='none';draw();
+cv.style.cursor='crosshair';
 });
 
 function updateHoverCandle(){
@@ -878,6 +826,7 @@ el.innerHTML='<span>'+dt+'</span>  <b style="color:'+color+'">O '+fmtNum(k.o)+' 
 el.style.display='block';
 }
 
+/* ====== Колесо ====== */
 function zoomHorizontalRight(factor){
 var c=state.candles;
 if(!c.length)return;
@@ -940,6 +889,7 @@ draw();
 /* ====== ПЕРЕТАСКИВАНИЕ ====== */
 var drag=null;
 var dragY=null;
+var dragX=null;
 
 cv.addEventListener('mousedown',function(e){
 var r=cv.getBoundingClientRect();
@@ -948,8 +898,8 @@ var my=e.clientY-r.top;
 var rect=plotRect();
 var axisX=priceAxisX(rect);
 
-/* Зажали на шкале цен — вертикальный зум-драг */
-if(mx>=axisX){
+/* 1) Зажали на шкале цен — вертикальный зум-драг */
+if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){
 var rng=priceRange();
 var clampY=Math.max(rect.y,Math.min(rect.y+rect.h,my));
 dragY={
@@ -963,41 +913,115 @@ e.preventDefault();
 return;
 }
 
-/* Иначе — обычное горизонтальное перетаскивание */
+/* 2) Зажали на шкале времени (снизу) — горизонтальный зум-драг */
+if(my>=rect.y+rect.h && my<=cssH && mx>=rect.x && mx<=axisX){
+var n=state.view.end-state.view.start;
+if(n<=0)return;
+var rel=Math.max(0,Math.min(1,(mx-rect.x)/rect.w));
+dragX={
+startX:e.clientX,
+rel:rel,
+anchorIdx:state.view.start+rel*n,
+n:n
+};
+cv.style.cursor='ew-resize';
+e.preventDefault();
+return;
+}
+
+/* 3) Свободное панорамирование по графику (X + Y, как в TradingView) */
 if(mx<rect.x||mx>rect.x+rect.w)return;
-drag={x:e.clientX,start:state.view.start,end:state.view.end};
+if(my<rect.y||my>rect.y+rect.h)return;
+var rngStart=priceRange();
+drag={
+x:e.clientX,
+y:e.clientY,
+start:state.view.start,
+end:state.view.end,
+pxMin:rngStart.min,
+pxMax:rngStart.max,
+pxSpan:(rngStart.max-rngStart.min)||1
+};
 cv.style.cursor='grabbing';
 });
 
 window.addEventListener('mousemove',function(e){
+/* Вертикальный зум-драг */
 if(dragY){
 var dy=e.clientY-dragY.startY;
-var factor=Math.exp(dy/250);
-if(factor<0.05)factor=0.05;
-if(factor>20)factor=20;
-var newMin=dragY.anchorPrice-(dragY.anchorPrice-dragY.startMin)*factor;
-var newMax=dragY.anchorPrice+(dragY.startMax-dragY.anchorPrice)*factor;
-if(newMax-newMin>1e-9){
+var factorY=Math.exp(dy/250);
+if(factorY<0.05)factorY=0.05;
+if(factorY>20)factorY=20;
+var nMin=dragY.anchorPrice-(dragY.anchorPrice-dragY.startMin)*factorY;
+var nMax=dragY.anchorPrice+(dragY.startMax-dragY.anchorPrice)*factorY;
+if(nMax-nMin>1e-9){
 state.manualPx=true;
-state.viewPx={min:newMin,max:newMax};
+state.viewPx={min:nMin,max:nMax};
 draw();
 }
 return;
 }
-if(!drag)return;
-var rect=plotRect(),dx=e.clientX-drag.x,n=drag.end-drag.start;if(n<=0)return;
-var shift=Math.round((dx/rect.w)*n);
-var ns=drag.start-shift,ne=drag.end-shift,c=state.candles;
-if(ns<0){ne-=ns;ns=0;}
-if(ne>c.length-1){ns-=(ne-(c.length-1));ne=c.length-1;}
+
+/* Горизонтальный зум-драг по оси времени */
+if(dragX){
+var dx=e.clientX-dragX.startX;
+/* Тащишь влево (dx<0) → фактор > 1 → больше свечей видно (zoom out) */
+var factorX=Math.exp(-dx/250);
+if(factorX<0.05)factorX=0.05;
+if(factorX>20)factorX=20;
+var c=state.candles;
+var newN=Math.round(dragX.n*factorX);
+newN=Math.max(10,Math.min(c.length-1,newN));
+var ns=Math.round(dragX.anchorIdx-dragX.rel*newN);
+var ne=ns+newN;
+if(ns<0){ns=0;ne=newN;}
+if(ne>c.length-1){ne=c.length-1;ns=ne-newN;}
 if(ns<0)ns=0;
-state.view.start=ns;state.view.end=ne;draw();
+state.view.start=ns;
+state.view.end=ne;
+draw();
+return;
+}
+
+/* Свободное панорамирование (X + Y) */
+if(!drag)return;
+var rect=plotRect();
+var dx2=e.clientX-drag.x;
+var dy2=e.clientY-drag.y;
+var n=drag.end-drag.start;
+
+/* --- Горизонтальный сдвиг (по времени) --- */
+if(n>0 && dx2!==0){
+var shift=Math.round((dx2/rect.w)*n);
+var ns2=drag.start-shift, ne2=drag.end-shift, c2=state.candles;
+if(ns2<0){ne2-=ns2;ns2=0;}
+if(ne2>c2.length-1){ns2-=(ne2-(c2.length-1));ne2=c2.length-1;}
+if(ns2<0)ns2=0;
+state.view.start=ns2;
+state.view.end=ne2;
+}
+
+/* --- Вертикальный сдвиг (по цене) ---
+   drag вниз (dy>0)  → видим более высокие цены (min/max растут)
+   drag вверх (dy<0) → видим более низкие цены (min/max падают)
+   Диапазон (span) сохраняется, меняется только его положение. */
+if(dy2!==0){
+var priceDelta=(dy2/rect.h)*drag.pxSpan;
+state.manualPx=true;
+state.viewPx={
+min:drag.pxMin+priceDelta,
+max:drag.pxMax+priceDelta
+};
+}
+
+draw();
 });
 
 window.addEventListener('mouseup',function(){
 drag=null;
 dragY=null;
-cv.style.cursor='';
+dragX=null;
+cv.style.cursor='crosshair';
 });
 
 /* Тач */
@@ -1007,7 +1031,16 @@ cv.addEventListener('touchstart',function(e){
 var r=cv.getBoundingClientRect();
 if(e.touches.length===1){
 var t0=e.touches[0];
-touchDrag={x:t0.clientX-r.left,start:state.view.start,end:state.view.end};
+var rngT=priceRange();
+touchDrag={
+x:t0.clientX-r.left,
+y:t0.clientY-r.top,
+start:state.view.start,
+end:state.view.end,
+pxMin:rngT.min,
+pxMax:rngT.max,
+pxSpan:(rngT.max-rngT.min)||1
+};
 hover.active=true;hover.x=t0.clientX-r.left;hover.y=t0.clientY-r.top;
 updateHoverCandle();draw();
 }else if(e.touches.length===2){
@@ -1019,13 +1052,27 @@ cv.addEventListener('touchmove',function(e){
 var r=cv.getBoundingClientRect();
 if(e.touches.length===1&&touchDrag){
 var dx=(e.touches[0].clientX-r.left)-touchDrag.x;
-var rect=plotRect(),n=touchDrag.end-touchDrag.start;if(n<=0)return;
+var dy=(e.touches[0].clientY-r.top)-touchDrag.y;
+var rect=plotRect(),n=touchDrag.end-touchDrag.start;
+/* Горизонталь */
+if(n>0 && dx!==0){
 var shift=Math.round((dx/rect.w)*n);
 var ns=touchDrag.start-shift,ne=touchDrag.end-shift,c=state.candles;
 if(ns<0){ne-=ns;ns=0;}
 if(ne>c.length-1){ns-=(ne-(c.length-1));ne=c.length-1;}
 if(ns<0)ns=0;
-state.view.start=ns;state.view.end=ne;draw();
+state.view.start=ns;state.view.end=ne;
+}
+/* Вертикаль */
+if(dy!==0){
+var priceDelta=(dy/rect.h)*touchDrag.pxSpan;
+state.manualPx=true;
+state.viewPx={
+min:touchDrag.pxMin+priceDelta,
+max:touchDrag.pxMax+priceDelta
+};
+}
+draw();
 }else if(e.touches.length===2&&pinch){
 var nd=touchDist(e.touches[0],e.touches[1]);
 var factor=pinch.d/nd;
@@ -1064,7 +1111,7 @@ startAutoRefresh();
 setInterval(function(){
 if(state.candles.length){
 refreshStatus();
-if(!drag&&!dragY&&!touchDrag)draw();
+if(!drag&&!dragY&&!dragX&&!touchDrag)draw();
 }
 },1000);
 }).catch(function(e){
