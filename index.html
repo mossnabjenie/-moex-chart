@@ -6,7 +6,6 @@
   <title>MOEX Terminal</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#131722" />
-  <script src="https://jsdelivr.net"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
@@ -18,8 +17,8 @@
     button:hover { background: #363a45; }
     button.active { background: #2962ff; border-color: #2962ff; font-weight: 600; }
     #tf-buttons { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; max-width: 100%; }
-    #status { font-size: 12px; color: #787b86; margin-left: auto; }
-    #chart { flex: 1; width: 100%; position: relative; }
+    #status { font-size: 12px; color: #f2a900; margin-left: auto; }
+    #chart { flex: 1; width: 100%; position: relative; min-height: 300px; }
   </style>
 </head>
 <body>
@@ -47,37 +46,122 @@
       <button data-tf="1M">1М</button>
     </div>
 
-    <div id="status">Загрузка...</div>
+    <div id="status">Загрузка графика...</div>
   </header>
 
   <div id="chart"></div>
 
-  <script type="module">
-    import { fetchAllMoexTickers, fetchMoexCandles } from './moexDatafeed.js';
+  <script>
+    // Очистка старого кэша Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        for (const r of regs) r.unregister();
+      });
+    }
+
+    // Безопасная загрузка библиотеки графика без обрезки длинной ссылки
+    function loadChartLibrary() {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://jsdelivr.net' + 'lightweight-charts@4.2.1/dist/' + 'lightweight-charts.standalone.production.js';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Не удалось загрузить библиотеку графика с CDN'));
+        document.head.appendChild(s);
+      });
+    }
+
+    const statusEl = document.getElementById('status');
+    const searchInput = document.getElementById('ticker-search');
+    const tickerSelect = document.getElementById('ticker-select');
+    const BASE_URL = 'https://moex.com';
 
     let allTickers = [];
     let currentTicker = 'SBER';
     let currentTf = '15m';
     let timerId = null;
+    let chart = null;
+    let candleSeries = null;
 
-    const statusEl = document.getElementById('status');
-    const searchInput = document.getElementById('ticker-search');
-    const tickerSelect = document.getElementById('ticker-select');
+    function mskToUnix(mskDateStr) {
+      return Math.floor(new Date(String(mskDateStr).replace(' ', 'T') + '+03:00').getTime() / 1000);
+    }
 
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-      layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
-      grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
-      crosshair: { mode: 0 },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a2e39' },
-      rightPriceScale: { borderColor: '#2a2e39' },
-      autoSize: true
-    });
+    function aggregateCandles(candles, stepSeconds) {
+      const buckets = new Map();
+      for (const c of candles) {
+        const bucketTime = Math.floor(c.time / stepSeconds) * stepSeconds;
+        if (!buckets.has(bucketTime)) {
+          buckets.set(bucketTime, { ...c, time: bucketTime });
+        } else {
+          const agg = buckets.get(bucketTime);
+          agg.high = Math.max(agg.high, c.high);
+          agg.low = Math.min(agg.low, c.low);
+          agg.close = c.close;
+          agg.volume += c.volume;
+        }
+      }
+      return Array.from(buckets.values());
+    }
 
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a', downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a', wickDownColor: '#ef5350'
-    });
+    async function fetchAllMoexTickers() {
+      const url = `${BASE_URL}.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME`;
+      const res = await fetch(url);
+      const json = await res.json();
+      const rows = json.securities?.data || [];
+      return rows
+        .filter(r => Array.isArray(r) && r.at(0))
+        .map(r => ({ secid: r.at(0), name: r.at(1) || r.at(0) }))
+        .sort((a, b) => a.secid.localeCompare(b.secid));
+    }
+
+    async function fetchMoexCandles(ticker, timeframe) {
+      const tfConfig = {
+        '1m':  { iss: 1,  aggSec: null,  days: 3 },
+        '2m':  { iss: 1,  aggSec: 120,   days: 4 },
+        '3m':  { iss: 1,  aggSec: 180,   days: 5 },
+        '5m':  { iss: 1,  aggSec: 300,   days: 7 },
+        '10m': { iss: 10, aggSec: null,  days: 20 },
+        '15m': { iss: 1,  aggSec: 900,   days: 10 },
+        '30m': { iss: 1,  aggSec: 1800,  days: 14 },
+        '1h':  { iss: 60, aggSec: null,  days: 90 },
+        '2h':  { iss: 60, aggSec: 7200,  days: 150 },
+        '4h':  { iss: 60, aggSec: 14400, days: 250 },
+        '1D':  { iss: 24, aggSec: null,  days: 1000 },
+        '1W':  { iss: 7,  aggSec: null,  days: 3000 },
+        '1M':  { iss: 31, aggSec: null,  days: 5000 }
+      };
+
+      const cfg = tfConfig[timeframe] || tfConfig['15m'];
+      const fromDate = new Date(Date.now() - cfg.days * 86400000).toISOString().split('T').at(0);
+
+      let start = 0;
+      let rawCandles = [];
+
+      while (true) {
+        const url = `${BASE_URL}/${ticker.toUpperCase()}/candles.json?interval=${cfg.iss}&from=${fromDate}&start=${start}&iss.meta=off`;
+        const res = await fetch(url);
+        const json = await res.json();
+        const rows = json.candles?.data || [];
+
+        if (rows.length === 0) break;
+
+        for (const r of rows) {
+          rawCandles.push({
+            time: mskToUnix(r.at(6)),
+            open: Number(r.at(0)),
+            high: Number(r.at(2)),
+            low: Number(r.at(3)),
+            close: Number(r.at(1)),
+            volume: Number(r.at(5))
+          });
+        }
+
+        if (rows.length < 500) break;
+        start += 500;
+      }
+
+      return cfg.aggSec ? aggregateCandles(rawCandles, cfg.aggSec) : rawCandles;
+    }
 
     function renderSelectOptions(list) {
       tickerSelect.innerHTML = list
@@ -86,8 +170,12 @@
     }
 
     async function initTickers() {
-      allTickers = await fetchAllMoexTickers();
-      renderSelectOptions(allTickers);
+      try {
+        allTickers = await fetchAllMoexTickers();
+        renderSelectOptions(allTickers);
+      } catch (e) {
+        statusEl.textContent = 'Ошибка тикеров: ' + e.message;
+      }
     }
 
     searchInput.addEventListener('input', () => {
@@ -115,11 +203,11 @@
     }
 
     async function updateChart(fitContent = false) {
-      statusEl.textContent = `Загрузка ${currentTicker} (${currentTf})...`;
+      statusEl.textContent = `Запрос MOEX: ${currentTicker} (${currentTf})...`;
       try {
         const candles = await fetchMoexCandles(currentTicker, currentTf);
         if (!candles.length) {
-          statusEl.textContent = `Нет данных: ${currentTicker}`;
+          statusEl.textContent = `Нет свечей: ${currentTicker}`;
           return;
         }
         candleSeries.setData(candles);
@@ -127,10 +215,11 @@
 
         const last = candles.at(-1);
         const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        statusEl.style.color = '#26a69a';
         statusEl.textContent = `${currentTicker}: ${last.close} ₽ (${now})`;
       } catch (e) {
-        console.error(e);
-        statusEl.textContent = 'Ошибка: ' + e.message;
+        statusEl.style.color = '#ef5350';
+        statusEl.textContent = 'Ошибка запроса: ' + e.message;
       }
     }
 
@@ -145,12 +234,28 @@
       timerId = setInterval(() => updateChart(false), 12000);
     });
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js');
+    async function startApp() {
+      try {
+        await loadChartLibrary();
+        chart = LightweightCharts.createChart(document.getElementById('chart'), {
+          layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+          grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+          crosshair: { mode: 0 },
+          timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a2e39' },
+          rightPriceScale: { borderColor: '#2a2e39' },
+          autoSize: true
+        });
+        candleSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a', downColor: '#ef5350',
+          borderVisible: false,
+          wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+        initTickers();
+        selectTicker('SBER');
+      } catch (e) {
+        statusEl.style.color = '#ef5350';
+        statusEl.textContent = e.message;
+      }
     }
 
-    initTickers();
-    selectTicker('SBER');
-  </script>
-</body>
-</html>
+
