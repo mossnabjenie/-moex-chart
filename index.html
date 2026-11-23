@@ -118,11 +118,11 @@ var PAGE_SIZE=500;
 var MSK_OFFSET=3*3600*1000;
 var END_HOUR_MSK=23,END_MIN_MSK=50;
 
-/* EMA: белая EMA20 — тонкая (1px), голубая EMA200 — толще (2px) */
+/* EMA: обе линии толщиной 1.5px */
 var EMA20_COLOR='#ffffff';
-var EMA20_WIDTH=1;
+var EMA20_WIDTH=1.5;
 var EMA200_COLOR='#4fc3f7';
-var EMA200_WIDTH=2;
+var EMA200_WIDTH=1.5;
 
 var $=function(s){return document.querySelector(s);};
 function pad2(n){return (n<10?'0':'')+n;}
@@ -336,8 +336,6 @@ db:{enabled:false,boxp:10,thickness:1,boxes:[]}
 var securities=[];
 var refreshTimer=null;
 
-/* Показываем ТОЛЬКО короткий тикер (SECID), без расшифровки.
-   Приоритеты и сортировка — как раньше. */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
