@@ -515,7 +515,8 @@ var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
-var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:150};
+/* paddingRight уменьшен со 150 до 40 (~1 см) — больше нет "чёрной пустоты" между свечами и шкалой цен */
+var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:40};
 
 function resize(){
 var wrap=$('#chartWrap');
