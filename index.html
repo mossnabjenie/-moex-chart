@@ -4,615 +4,405 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
-
-<!-- PWA: манифест встроен как data-URI, отдельных файлов не требуется -->
 <link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23131722","theme_color":"%23131722","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23131722%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
 <meta name="theme-color" content="#131722">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MOEX">
-
 <style>
-  :root{
-    --bg:#131722; --panel:#1a2030; --grid:#232a3a; --text:#d7dde5;
-    --up:#26a69a; --down:#ef5350; --accent:#f0a020; --muted:#7d8694;
-  }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
-    font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-    overflow:hidden}
-  #app{display:flex;flex-direction:column;height:100%}
-  header{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;
-    background:var(--panel);border-bottom:1px solid var(--grid);z-index:5}
-  header .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-  select,input,button{background:#0b0f14;color:var(--text);border:1px solid #2a323d;
-    border-radius:6px;padding:5px 7px;font-size:12px;outline:none}
-  button{cursor:pointer}
-  button:hover{border-color:var(--accent)}
-  button.active{background:var(--accent);color:#111;border-color:var(--accent);font-weight:600}
-  #search{width:130px}
-  #ticker{max-width:230px}
-  .tfs{display:flex;gap:4px;flex-wrap:wrap}
-  .tfs button{padding:4px 7px;min-width:32px}
-  #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
-  #status b{color:var(--text);font-weight:600}
-  #status .err{color:#ef5350}
-  #chartWrap{position:relative;flex:1;min-height:0}
-  canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-  #ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);
-    border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;
-    pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
-  #ohlc span{color:var(--muted)}
-  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--accent);font-size:15px;background:rgba(19,23,34,.6);pointer-events:none}
-  #loading.hide{display:none}
+:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;background:var(--panel);border-bottom:1px solid var(--grid);z-index:5}
+header .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+select,input,button{background:#0b0f14;color:var(--text);border:1px solid #2a323d;border-radius:6px;padding:5px 7px;font-size:12px;outline:none}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.active{background:var(--accent);color:#111;border-color:var(--accent);font-weight:600}
+#search{width:130px}
+#ticker{max-width:230px}
+.tfs{display:flex;gap:4px;flex-wrap:wrap}
+.tfs button{padding:4px 7px;min-width:32px}
+#status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+#status .err{color:#ef5350}
+#chartWrap{position:relative;flex:1;min-height:0}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+#ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
+#ohlc span{color:var(--muted)}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(19,23,34,.6);pointer-events:none}
+#loading.hide{display:none}
 </style>
 </head>
 <body>
 <div id="app">
-  <header>
-    <div class="row">
-      <select id="ticker" title="Тикер"></select>
-      <input id="search" placeholder="поиск: SBER / Сбер" autocomplete="off">
-    </div>
-    <div class="tfs" id="tfs"></div>
-    <div id="status">Загрузка…</div>
-  </header>
-  <div id="chartWrap">
-    <canvas id="cv"></canvas>
-    <div id="ohlc"></div>
-    <div id="loading">Загрузка графика…</div>
-  </div>
+<header>
+<div class="row">
+<select id="ticker" title="Тикер"></select>
+<input id="search" placeholder="поиск: SBER / Сбер" autocomplete="off">
 </div>
-
+<div class="tfs" id="tfs"></div>
+<div id="status">Загрузка…</div>
+</header>
+<div id="chartWrap">
+<canvas id="cv"></canvas>
+<div id="ohlc"></div>
+<div id="loading">Загрузка графика…</div>
+</div>
+</div>
 <script>
-(() => {
+(function(){
 'use strict';
-
-/* ---------- 0. Принудительный сброс старых Service Worker ---------- */
-(async () => {
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) { try { await r.unregister(); } catch(e){} }
-      if (window.caches && caches.keys) {
-        const keys = await caches.keys();
-        for (const k of keys) { try { await caches.delete(k); } catch(e){} }
-      }
-    }
-  } catch(e){ /* ignore */ }
-})();
-
-/* ---------- 1. Константы ---------- */
-const BASE = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
-const SEC_URL = BASE + '/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
-const CANDLE_URL = (t, intv, from, start) =>
-  BASE + '/securities/' + encodeURIComponent(t) + '/candles.json?interval=' + intv +
-  '&from=' + from + '&start=' + start + '&iss.meta=off';
-
-const TF_LIST = [
-  {key:'2m',  label:'2м',  iss:1,  agg:2},
-  {key:'3m',  label:'3м',  iss:1,  agg:3},
-  {key:'5m',  label:'5м',  iss:1,  agg:5},
-  {key:'10m', label:'10м', iss:10, agg:1},
-  {key:'15m', label:'15м', iss:1,  agg:15},
-  {key:'30m', label:'30м', iss:1,  agg:30},
-  {key:'1h',  label:'1ч',  iss:60, agg:1},
-  {key:'2h',  label:'2ч',  iss:60, agg:2},
-  {key:'4h',  label:'4ч',  iss:60, agg:4},
-  {key:'1d',  label:'1Д',  iss:24, agg:1},
-  {key:'1w',  label:'1Н',  iss:7,  agg:1},
-  {key:'1M',  label:'1М',  iss:31, agg:1}
+var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
+var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
+function CANDLE_URL(t,i,f,s){return BASE+'/securities/'+encodeURIComponent(t)+'/candles.json?interval='+i+'&from='+f+'&start='+s+'&iss.meta=off';}
+var TF_LIST=[
+{key:'2m',label:'2м',iss:1,agg:2},{key:'3m',label:'3м',iss:1,agg:3},{key:'5m',label:'5м',iss:1,agg:5},
+{key:'10m',label:'10м',iss:10,agg:1},{key:'15m',label:'15м',iss:1,agg:15},{key:'30m',label:'30м',iss:1,agg:30},
+{key:'1h',label:'1ч',iss:60,agg:1},{key:'2h',label:'2ч',iss:60,agg:2},{key:'4h',label:'4ч',iss:60,agg:4},
+{key:'1d',label:'1Д',iss:24,agg:1},{key:'1w',label:'1Н',iss:7,agg:1},{key:'1M',label:'1М',iss:31,agg:1}
 ];
-const TF_BY_KEY = Object.fromEntries(TF_LIST.map(t => [t.key, t]));
-const REFRESH_MS = 12000;
-const CANDLES_PER_LOAD = 500;
-
-/* ---------- 2. Утилиты ---------- */
-const $ = s => document.querySelector(s);
-const pad2 = n => (n < 10 ? '0' : '') + n;
-function moexToMs(begin){
-  const s = String(begin).replace(' ', 'T');
-  return Date.parse(s + '+03:00');
+var TF_BY_KEY={};TF_LIST.forEach(function(t){TF_BY_KEY[t.key]=t;});
+var REFRESH_MS=12000,CANDLES_PER_LOAD=500;
+var $=function(s){return document.querySelector(s);};
+function pad2(n){return (n<10?'0':'')+n;}
+function moexToMs(b){return Date.parse(String(b).replace(' ','T')+'+03:00');}
+function fmtDate(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());}
+function fmtNum(v){return v==null?'—':(+v).toFixed(Math.abs(v)<10?3:2);}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fetchJson(url){
+return new Promise(function(resolve,reject){
+var ctrl=new AbortController();var t=setTimeout(function(){ctrl.abort();},20000);
+fetch(url,{signal:ctrl.signal,cache:'no-store'}).then(function(res){
+clearTimeout(t);if(!res.ok)throw new Error('HTTP '+res.status);return res.json();
+}).then(resolve).catch(function(e){clearTimeout(t);reject(e);});
+});
 }
-const fmtDate = ts => {
-  const d = new Date(ts);
-  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-};
-const fmtNum = v => v == null ? '—' : (+v).toFixed(Math.abs(v) < 10 ? 3 : 2);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-/* ---------- 3. HTTP ---------- */
-async function fetchJson(url){
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 20000);
-  try {
-    const res = await fetch(url, {signal: ctrl.signal, cache:'no-store'});
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  } finally { clearTimeout(t); }
+function loadSecurities(){
+return fetchJson(SEC_URL).then(function(j){
+var d=(j.securities&&j.securities.data)||[];
+var cols=(j.securities&&j.securities.columns)||['SECID','SHORTNAME'];
+var iSec=cols.indexOf('SECID'),iName=cols.indexOf('SHORTNAME');
+var list=[],seen={};
+d.forEach(function(r){
+var sec=String(r.at(iSec));var name=String(r.at(iName)||sec);
+if(!sec||seen[sec])return;seen[sec]=1;list.push({sec:sec,name:name});
+});
+list.sort(function(a,b){return a.sec.localeCompare(b.sec);});
+return list;
+});
 }
-
-/* ---------- 4. Загрузка тикеров ---------- */
-async function loadSecurities(){
-  const j = await fetchJson(SEC_URL);
-  const d = (j.securities && j.securities.data) || [];
-  const cols = (j.securities && j.securities.columns) || ['SECID','SHORTNAME'];
-  const iSec = cols.indexOf('SECID'), iName = cols.indexOf('SHORTNAME');
-  const list = [];
-  const seen = new Set();
-  for (const r of d) {
-    const sec = String(r.at(iSec));
-    const name = String(r.at(iName) || sec);
-    if (!sec || seen.has(sec)) continue;
-    seen.add(sec);
-    list.push({sec, name});
-  }
-  list.sort((a,b) => a.sec.localeCompare(b.sec));
-  return list;
-}
-
-/* ---------- 5. Загрузка свечей ---------- */
-function monthsAgoFromDate(tf){
-  if (tf.iss === 24) return 5 * 365;
-  if (tf.iss === 7)  return 10 * 365;
-  if (tf.iss === 31) return 15 * 365;
-  if (tf.iss === 60) return 2 * 365;
-  return 90; // минутки
+function monthsAgo(tf){
+if(tf.iss===24)return 5*365;if(tf.iss===7)return 10*365;if(tf.iss===31)return 15*365;if(tf.iss===60)return 2*365;return 90;
 }
 function fromDateStr(tf){
-  const d = new Date(Date.now() - monthsAgoFromDate(tf) * 86400000);
-  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+var d=new Date(Date.now()-monthsAgo(tf)*86400000);
+return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
 }
-async function fetchCandlesRaw(ticker, tf, limit){
-  limit = limit || 2000;
-  const out = [];
-  const from = fromDateStr(tf);
-  let start = 0;
-  let guard = 0;
-  while (out.length < limit && guard++ < 40) {
-    const url = CANDLE_URL(ticker, tf.iss, from, start);
-    const j = await fetchJson(url);
-    const c = j.candles;
-    if (!c || !Array.isArray(c.data) || c.data.length === 0) break;
-    const cols = c.columns || [];
-    const iO = cols.indexOf('open'), iC = cols.indexOf('close'),
-          iH = cols.indexOf('high'), iL = cols.indexOf('low'),
-          iV = cols.indexOf('volume'), iB = cols.indexOf('begin');
-    const batch = c.data;
-    for (const r of batch) {
-      const ts = moexToMs(r.at(iB));
-      if (!isFinite(ts)) continue;
-      out.push({t: ts, o: +r.at(iO), c: +r.at(iC), h: +r.at(iH), l: +r.at(iL), v: +r.at(iV) || 0});
-    }
-    if (batch.length < CANDLES_PER_LOAD) break;
-    start += CANDLES_PER_LOAD;
-  }
-  const map = new Map();
-  for (const c of out) map.set(c.t, c);
-  return [...map.values()].sort((a,b) => a.t - b.t);
+function fetchCandlesRaw(ticker,tf,limit){
+limit=limit||2000;var out=[],from=fromDateStr(tf),start=0,guard=0;
+function loop(){
+if(out.length>=limit||guard++>=40||start>50000)return Promise.resolve(finalize(out));
+return fetchJson(CANDLE_URL(ticker,tf.iss,from,start)).then(function(j){
+var c=j.candles;
+if(!c||!Array.isArray(c.data)||c.data.length===0)return finalize(out);
+var cols=c.columns||[];
+var iO=cols.indexOf('open'),iC=cols.indexOf('close'),iH=cols.indexOf('high'),iL=cols.indexOf('low'),iV=cols.indexOf('volume'),iB=cols.indexOf('begin');
+c.data.forEach(function(r){
+var ts=moexToMs(r.at(iB));if(!isFinite(ts))return;
+out.push({t:ts,o:+r.at(iO),c:+r.at(iC),h:+r.at(iH),l:+r.at(iL),v:+r.at(iV)||0});
+});
+if(c.data.length<CANDLES_PER_LOAD)return finalize(out);
+start+=CANDLES_PER_LOAD;return loop();
+});
 }
-function aggregate(candles, agg){
-  if (!agg || agg <= 1) return candles;
-  const res = [];
-  for (let i = 0; i < candles.length; i += agg) {
-    const chunk = candles.slice(i, i + agg);
-    if (!chunk.length) continue;
-    let o = chunk.at(0).o, c = chunk.at(-1).c, h = -Infinity, l = Infinity, v = 0;
-    for (const k of chunk) {
-      if (k.h > h) h = k.h;
-      if (k.l < l) l = k.l;
-      v += k.v;
-    }
-    res.push({t: chunk.at(0).t, o, c, h, l, v});
-  }
-  return res;
+return loop();
 }
-
-/* ---------- 6. Состояние ---------- */
-const state = {
-  ticker: 'SBER',
-  tfKey: '1d',
-  candles: [],
-  rawIss: [],
-  view: {start: 0, end: 0},
-  viewPx: {min: 0, max: 0},
-  manualPx: false,
-  loading: false,
-  lastUpdate: 0,
-  err: ''
-};
-let securities = [];
-
-/* ---------- 7. UI ---------- */
+function finalize(out){
+var map={},res=[];
+out.forEach(function(c){map[c.t]=c;});
+for(var k in map)res.push(map[k]);
+res.sort(function(a,b){return a.t-b.t;});
+return res;
+}
+function aggregate(candles,agg){
+if(!agg||agg<=1)return candles;
+var res=[];
+for(var i=0;i<candles.length;i+=agg){
+var chunk=candles.slice(i,i+agg);if(!chunk.length)continue;
+var o=chunk[0].o,c=chunk[chunk.length-1].c,h=-Infinity,l=Infinity,v=0;
+chunk.forEach(function(k){if(k.h>h)h=k.h;if(k.l<l)l=k.l;v+=k.v;});
+res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
+}
+return res;
+}
+var state={ticker:'SBER',tfKey:'1d',candles:[],rawIss:[],view:{start:0,end:0},viewPx:{min:0,max:0},manualPx:false,loading:false,lastUpdate:0,err:''};
+var securities=[];
 function renderTickerOptions(filter){
-  filter = filter || '';
-  const sel = $('#ticker');
-  const f = filter.trim().toLowerCase();
-  const items = !f ? securities :
-    securities.filter(s => s.sec.toLowerCase().includes(f) || s.name.toLowerCase().includes(f));
-  const cur = state.ticker;
-  sel.innerHTML = items.map(s =>
-    '<option value="' + esc(s.sec) + '">' + esc(s.sec) + ' — ' + esc(s.name) + '</option>'
-  ).join('');
-  if (items.some(s => s.sec === cur)) sel.value = cur;
-  else if (items.length) sel.value = items.at(0).sec;
+filter=filter||'';var sel=$('#ticker');var f=filter.trim().toLowerCase();
+var items=!f?securities:securities.filter(function(s){return s.sec.toLowerCase().indexOf(f)>=0||s.name.toLowerCase().indexOf(f)>=0;});
+var cur=state.ticker;
+sel.innerHTML=items.map(function(s){return '<option value="'+esc(s.sec)+'">'+esc(s.sec)+' — '+esc(s.name)+'</option>';}).join('');
+if(items.some(function(s){return s.sec===cur;}))sel.value=cur;else if(items.length)sel.value=items[0].sec;
 }
 function setupUi(){
-  const tfs = $('#tfs');
-  tfs.innerHTML = TF_LIST.map(t =>
-    '<button data-tf="' + t.key + '" class="' + (t.key===state.tfKey?'active':'') + '">' + t.label + '</button>'
-  ).join('');
-  tfs.addEventListener('click', e => {
-    const b = e.target.closest('button[data-tf]');
-    if (!b) return;
-    const key = b.dataset.tf;
-    if (key === state.tfKey) return;
-    state.tfKey = key;
-    tfs.querySelectorAll('button').forEach(x => x.classList.toggle('active', x.dataset.tf === key));
-    reloadChart();
-  });
-  $('#ticker').addEventListener('change', e => {
-    state.ticker = e.target.value;
-    reloadChart();
-  });
-  $('#search').addEventListener('input', e => renderTickerOptions(e.target.value));
-  $('#search').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const first = $('#ticker').options[0];
-      if (first) { $('#ticker').value = first.value; state.ticker = first.value; reloadChart(); }
-    }
-  });
+var tfs=$('#tfs');
+tfs.innerHTML=TF_LIST.map(function(t){return '<button data-tf="'+t.key+'" class="'+(t.key===state.tfKey?'active':'')+'">'+t.label+'</button>';}).join('');
+tfs.addEventListener('click',function(e){
+var b=e.target.closest('button[data-tf]');if(!b)return;
+var key=b.dataset.tf;if(key===state.tfKey)return;
+state.tfKey=key;
+tfs.querySelectorAll('button').forEach(function(x){x.classList.toggle('active',x.dataset.tf===key);});
+reloadChart();
+});
+$('#ticker').addEventListener('change',function(e){state.ticker=e.target.value;reloadChart();});
+$('#search').addEventListener('input',function(e){renderTickerOptions(e.target.value);});
+$('#search').addEventListener('keydown',function(e){
+if(e.key==='Enter'){var first=$('#ticker').options[0];if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();}}
+});
 }
-function setStatus(html, isErr){
-  const el = $('#status');
-  el.innerHTML = html;
-  el.classList.toggle('err', !!isErr);
-}
+function setStatus(html,isErr){var el=$('#status');el.innerHTML=html;el.classList.toggle('err',!!isErr);}
 function refreshStatus(){
-  const t = new Date(state.lastUpdate);
-  const upd = state.lastUpdate ? pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()) : '—';
-  const last = state.candles.at(-1);
-  const price = last ? fmtNum(last.c) : '—';
-  if (state.err) {
-    setStatus('<span class="err">Ошибка: ' + esc(state.err) + '</span>', true);
-  } else {
-    setStatus('<b>' + esc(state.ticker) + '</b> ' + price + ' · обн. ' + upd);
-  }
+var t=new Date(state.lastUpdate);
+var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
+var last=state.candles.length?state.candles[state.candles.length-1]:null;
+var price=last?fmtNum(last.c):'—';
+if(state.err)setStatus('<span class="err">Ошибка: '+esc(state.err)+'</span>',true);
+else setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · обн. '+upd);
 }
-
-/* ---------- 8. Загрузка графика ---------- */
-async function reloadChart(){
-  if (state.loading) return;
-  state.loading = true;
-  state.err = '';
-  $('#loading').classList.remove('hide');
-  const tf = TF_BY_KEY[state.tfKey];
-  setStatus('Загрузка ' + state.ticker + ' · ' + tf.label + '…');
-  try {
-    const raw = await fetchCandlesRaw(state.ticker, tf, 2000);
-    state.rawIss = raw;
-    state.candles = aggregate(raw, tf.agg);
-    if (!state.candles.length) throw new Error('Нет данных по ' + state.ticker);
-    const n = state.candles.length;
-    state.view.end = n - 1;
-    state.view.start = Math.max(0, n - 120);
-    state.manualPx = false;
-    state.viewPx = {min: 0, max: 0};
-    state.lastUpdate = Date.now();
-    refreshStatus();
-  } catch (e) {
-    state.err = (e && e.message) ? e.message : String(e);
-    refreshStatus();
-    console.error(e);
-  } finally {
-    state.loading = false;
-    $('#loading').classList.add('hide');
-    draw();
-  }
+function reloadChart(){
+if(state.loading)return;
+state.loading=true;state.err='';$('#loading').classList.remove('hide');
+var tf=TF_BY_KEY[state.tfKey];
+setStatus('Загрузка '+state.ticker+' · '+tf.label+'…');
+fetchCandlesRaw(state.ticker,tf,2000).then(function(raw){
+state.rawIss=raw;state.candles=aggregate(raw,tf.agg);
+if(!state.candles.length)throw new Error('Нет данных по '+state.ticker);
+var n=state.candles.length;
+state.view.end=n-1;state.view.start=Math.max(0,n-120);
+state.manualPx=false;state.viewPx={min:0,max:0};state.lastUpdate=Date.now();
+refreshStatus();
+}).catch(function(e){
+state.err=(e&&e.message)?e.message:String(e);refreshStatus();console.error(e);
+}).then(function(){
+state.loading=false;$('#loading').classList.add('hide');draw();
+});
 }
-
-/* ---------- 9. Автообновление ---------- */
-let refreshTimer = null;
-function startAutoRefresh(){
-  stopAutoRefresh();
-  refreshTimer = setInterval(autoRefresh, REFRESH_MS);
+var refreshTimer=null;
+function startAutoRefresh(){stopAutoRefresh();refreshTimer=setInterval(autoRefresh,REFRESH_MS);}
+function stopAutoRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
+function autoRefresh(){
+if(state.loading||!state.candles.length)return;
+var tf=TF_BY_KEY[state.tfKey];
+fetchCandlesRaw(state.ticker,tf,CANDLES_PER_LOAD*2).then(function(raw){
+if(!raw.length)return;
+var map={},merged=[];
+state.rawIss.forEach(function(c){map[c.t]=c;});
+raw.forEach(function(c){map[c.t]=c;});
+for(var k in map)merged.push(map[k]);
+merged.sort(function(a,b){return a.t-b.t;});
+state.rawIss=merged;state.candles=aggregate(merged,tf.agg);
+state.lastUpdate=Date.now();state.err='';refreshStatus();draw();
+}).catch(function(e){state.err=(e&&e.message)?e.message:String(e);refreshStatus();});
 }
-function stopAutoRefresh(){
-  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-}
-async function autoRefresh(){
-  if (state.loading || !state.candles.length) return;
-  const tf = TF_BY_KEY[state.tfKey];
-  try {
-    const raw = await fetchCandlesRaw(state.ticker, tf, CANDLES_PER_LOAD * 2);
-    if (!raw.length) return;
-    const map = new Map();
-    for (const c of state.rawIss) map.set(c.t, c);
-    for (const c of raw) map.set(c.t, c);
-    const merged = [...map.values()].sort((a,b) => a.t - b.t);
-    state.rawIss = merged;
-    state.candles = aggregate(merged, tf.agg);
-    state.lastUpdate = Date.now();
-    state.err = '';
-    refreshStatus();
-    draw();
-  } catch (e) {
-    state.err = (e && e.message) ? e.message : String(e);
-    refreshStatus();
-  }
-}
-
-/* ---------- 10. Холст ---------- */
-const cv = $('#cv');
-const ctx = cv.getContext('2d');
-let DPR = Math.min(window.devicePixelRatio || 1, 2);
-let cssW = 0, cssH = 0;
-const LAYOUT = {right: 62, bottom: 22, left: 6, top: 10};
-
+var cv=$('#cv'),ctx=cv.getContext('2d');
+var DPR=Math.min(window.devicePixelRatio||1,2),cssW=0,cssH=0;
+var LAYOUT={right:62,bottom:22,left:6,top:10};
 function resize(){
-  const wrap = $('#chartWrap');
-  cssW = wrap.clientWidth;
-  cssH = wrap.clientHeight;
-  cv.width = Math.floor(cssW * DPR);
-  cv.height = Math.floor(cssH * DPR);
-  cv.style.width = cssW + 'px';
-  cv.style.height = cssH + 'px';
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  draw();
+var wrap=$('#chartWrap');cssW=wrap.clientWidth;cssH=wrap.clientHeight;
+cv.width=Math.floor(cssW*DPR);cv.height=Math.floor(cssH*DPR);
+cv.style.width=cssW+'px';cv.style.height=cssH+'px';
+ctx.setTransform(DPR,0,0,DPR,0,0);draw();
 }
-function plotRect(){
-  return {x: LAYOUT.left, y: LAYOUT.top,
-    w: Math.max(10, cssW - LAYOUT.left - LAYOUT.right),
-    h: Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)};
-}
+function plotRect(){return {x:LAYOUT.left,y:LAYOUT.top,w:Math.max(10,cssW-LAYOUT.left-LAYOUT.right),h:Math.max(10,cssH-LAYOUT.top-LAYOUT.bottom)};}
 function priceRange(){
-  const c = state.candles;
-  if (!c.length) return {min: 0, max: 1};
-  const s = Math.max(0, Math.min(state.view.start, c.length - 1));
-  const e = Math.max(s, Math.min(state.view.end, c.length - 1));
-  if (state.manualPx && state.viewPx.max > state.viewPx.min) return {min: state.viewPx.min, max: state.viewPx.max};
-  let mn = Infinity, mx = -Infinity;
-  for (let i = s; i <= e; i++) {
-    const k = c.at(i);
-    if (k.l < mn) mn = k.l;
-    if (k.h > mx) mx = k.h;
-  }
-  if (!isFinite(mn) || !isFinite(mx)) return {min: 0, max: 1};
-  const pad = (mx - mn) * 0.08 || Math.abs(mx) * 0.01 || 1;
-  return {min: mn - pad, max: mx + pad};
+var c=state.candles;if(!c.length)return {min:0,max:1};
+var s=Math.max(0,Math.min(state.view.start,c.length-1));
+var e=Math.max(s,Math.min(state.view.end,c.length-1));
+if(state.manualPx&&state.viewPx.max>state.viewPx.min)return {min:state.viewPx.min,max:state.viewPx.max};
+var mn=Infinity,mx=-Infinity;
+for(var i=s;i<=e;i++){var k=c[i];if(k.l<mn)mn=k.l;if(k.h>mx)mx=k.h;}
+if(!isFinite(mn)||!isFinite(mx))return {min:0,max:1};
+var pad=(mx-mn)*0.08||Math.abs(mx)*0.01||1;
+return {min:mn-pad,max:mx+pad};
 }
-function xForIndex(i, rect){
-  const n = state.view.end - state.view.start;
-  if (n <= 0) return rect.x;
-  return rect.x + ((i - state.view.start) / n) * rect.w;
-}
-function yForPrice(p, rect, rng){
-  const k = (p - rng.min) / (rng.max - rng.min || 1);
-  return rect.y + rect.h - k * rect.h;
-}
-function priceForY(y, rect, rng){
-  const k = (rect.y + rect.h - y) / rect.h;
-  return rng.min + k * (rng.max - rng.min);
-}
-function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888'; }
-
+function yForPrice(p,rect,rng){var k=(p-rng.min)/(rng.max-rng.min||1);return rect.y+rect.h-k*rect.h;}
+function priceForY(y,rect,rng){var k=(rect.y+rect.h-y)/rect.h;return rng.min+k*(rng.max-rng.min);}
+function getCss(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||'#888';}
 function draw(){
-  ctx.clearRect(0, 0, cssW, cssH);
-  const rect = plotRect();
-  const rng = priceRange();
-  const c = state.candles;
-  const s = Math.max(0, Math.min(state.view.start, Math.max(0, c.length - 1)));
-  const e = Math.max(s, Math.min(state.view.end, Math.max(0, c.length - 1)));
-  const visible = c.length ? c.slice(s, e + 1) : [];
-
-  ctx.fillStyle = getCss('--bg'); ctx.fillRect(0, 0, cssW, cssH);
-  ctx.fillStyle = getCss('--panel'); ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-  if (!visible.length) {
-    ctx.fillStyle = getCss('--muted');
-    ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Нет данных', rect.x + rect.w/2, rect.y + rect.h/2);
-    return;
-  }
-
-  drawGrid(rect, rng, visible);
-
-  const count = visible.length;
-  const slot = rect.w / count;
-  const bw = Math.max(1, Math.min(14, slot * 0.7));
-  for (let i = 0; i < count; i++) {
-    const k = visible.at(i);
-    const cx = rect.x + (i + 0.5) * slot;
-    const up = k.c >= k.o;
-    ctx.strokeStyle = up ? getCss('--up') : getCss('--down');
-    ctx.fillStyle   = up ? getCss('--up') : getCss('--down');
-    const yH = yForPrice(k.h, rect, rng), yL = yForPrice(k.l, rect, rng);
-    ctx.beginPath(); ctx.moveTo(cx, yH); ctx.lineTo(cx, yL); ctx.stroke();
-    const yO = yForPrice(k.o, rect, rng), yC = yForPrice(k.c, rect, rng);
-    const top = Math.min(yO, yC), h = Math.max(1, Math.abs(yC - yO));
-    if (bw >= 2) ctx.fillRect(cx - bw/2, top, bw, h);
-    else ctx.fillRect(cx, top, 1, h);
-  }
-
-  const last = visible.at(-1);
-  const lastY = yForPrice(last.c, rect, rng);
-  ctx.save();
-  ctx.strokeStyle = getCss('--accent'); ctx.setLineDash([4,4]);
-  ctx.beginPath(); ctx.moveTo(rect.x, lastY); ctx.lineTo(rect.x + rect.w, lastY); ctx.stroke();
-  ctx.restore();
-  drawPriceTag(lastY, last.c, rect);
-
-  ctx.fillStyle = getCss('--muted'); ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(state.ticker + ' · ' + TF_BY_KEY[state.tfKey].label, rect.x + 6, rect.y + 14);
-
-  if (hover.active) drawCrosshair(rect, rng, hover.x, hover.y);
+ctx.clearRect(0,0,cssW,cssH);
+var rect=plotRect(),rng=priceRange(),c=state.candles;
+var s=Math.max(0,Math.min(state.view.start,Math.max(0,c.length-1)));
+var e=Math.max(s,Math.min(state.view.end,Math.max(0,c.length-1)));
+var visible=c.length?c.slice(s,e+1):[];
+ctx.fillStyle=getCss('--bg');ctx.fillRect(0,0,cssW,cssH);
+ctx.fillStyle=getCss('--panel');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
+if(!visible.length){
+ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
+ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
 }
-
-function drawGrid(rect, rng, visible){
-  ctx.save();
-  ctx.strokeStyle = getCss('--grid'); ctx.fillStyle = getCss('--muted');
-  ctx.lineWidth = 1; ctx.font = '10px sans-serif';
-  const steps = 5; ctx.textAlign = 'left';
-  for (let i = 0; i <= steps; i++) {
-    const p = rng.min + (rng.max - rng.min) * (i / steps);
-    const y = yForPrice(p, rect, rng);
-    ctx.beginPath(); ctx.moveTo(rect.x, y); ctx.lineTo(rect.x + rect.w, y); ctx.stroke();
-    ctx.fillText(fmtNum(p), rect.x + rect.w + 6, y + 3);
-  }
-  const n = visible.length;
-  const target = Math.min(6, n);
-  ctx.textAlign = 'center';
-  for (let i = 0; i < target; i++) {
-    const idx = Math.floor((n - 1) * (i / Math.max(1, target - 1)));
-    const k = visible.at(idx);
-    const x = rect.x + (idx + 0.5) * (rect.w / n);
-    ctx.beginPath(); ctx.moveTo(x, rect.y); ctx.lineTo(x, rect.y + rect.h); ctx.stroke();
-    const d = new Date(k.t);
-    const label = (state.tfKey === '1d' || state.tfKey === '1w' || state.tfKey === '1M')
-      ? pad2(d.getDate()) + '.' + pad2(d.getMonth()+1)
-      : fmtDate(k.t);
-    ctx.fillText(label, x, rect.y + rect.h + 14);
-  }
-  ctx.restore();
+drawGrid(rect,rng,visible);
+var count=visible.length,slot=rect.w/count;
+var bw=Math.max(1,Math.min(14,slot*0.7));
+for(var i=0;i<count;i++){
+var k=visible[i],cx=rect.x+(i+0.5)*slot,up=k.c>=k.o;
+ctx.strokeStyle=up?getCss('--up'):getCss('--down');
+ctx.fillStyle=up?getCss('--up'):getCss('--down');
+var yH=yForPrice(k.h,rect,rng),yL=yForPrice(k.l,rect,rng);
+ctx.beginPath();ctx.moveTo(cx,yH);ctx.lineTo(cx,yL);ctx.stroke();
+var yO=yForPrice(k.o,rect,rng),yC=yForPrice(k.c,rect,rng);
+var top=Math.min(yO,yC),hh=Math.max(1,Math.abs(yC-yO));
+if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
-function drawPriceTag(y, price, rect){
-  ctx.save();
-  ctx.fillStyle = getCss('--accent');
-  const x = rect.x + rect.w;
-  ctx.fillRect(x, y - 9, LAYOUT.right - 6, 18);
-  ctx.fillStyle = '#111';
-  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(fmtNum(price), x + 4, y + 4);
-  ctx.restore();
+var last=visible[visible.length-1],lastY=yForPrice(last.c,rect,rng);
+ctx.save();ctx.strokeStyle=getCss('--accent');ctx.setLineDash([4,4]);
+ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(rect.x+rect.w,lastY);ctx.stroke();ctx.restore();
+drawPriceTag(lastY,last.c,rect);
+ctx.fillStyle=getCss('--muted');ctx.font='12px sans-serif';ctx.textAlign='left';
+ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label,rect.x+6,rect.y+14);
+if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 }
-function drawCrosshair(rect, rng, x, y){
-  if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) return;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(215,221,229,.45)'; ctx.setLineDash([3,3]);
-  ctx.beginPath(); ctx.moveTo(x, rect.y); ctx.lineTo(x, rect.y + rect.h); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(rect.x, y); ctx.lineTo(rect.x + rect.w, y); ctx.stroke();
-  ctx.restore();
-  const p = priceForY(y, rect, rng);
-  ctx.save();
-  ctx.fillStyle = '#2a323d';
-  ctx.fillRect(rect.x + rect.w, y - 9, LAYOUT.right - 6, 18);
-  ctx.fillStyle = getCss('--text'); ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(fmtNum(p), rect.x + rect.w + 4, y + 4);
-  ctx.restore();
+function drawGrid(rect,rng,visible){
+ctx.save();ctx.strokeStyle=getCss('--grid');ctx.fillStyle=getCss('--muted');
+ctx.lineWidth=1;ctx.font='10px sans-serif';
+var steps=5;ctx.textAlign='left';
+for(var i=0;i<=steps;i++){
+var p=rng.min+(rng.max-rng.min)*(i/steps);
+var y=yForPrice(p,rect,rng);
+ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(rect.x+rect.w,y);ctx.stroke();
+ctx.fillText(fmtNum(p),rect.x+rect.w+6,y+3);
 }
-
-/* ---------- 11. Перекрестие ---------- */
-const hover = {active:false, x:0, y:0};
+var n=visible.length,target=Math.min(6,n);ctx.textAlign='center';
+for(var j=0;j<target;j++){
+var idx=Math.floor((n-1)*(j/Math.max(1,target-1)));
+var k=visible[idx],x=rect.x+(idx+0.5)*(rect.w/n);
+ctx.beginPath();ctx.moveTo(x,rect.y);ctx.lineTo(x,rect.y+rect.h);ctx.stroke();
+var d=new Date(k.t);
+var label=(state.tfKey==='1d'||state.tfKey==='1w'||state.tfKey==='1M')?pad2(d.getDate())+'.'+pad2(d.getMonth()+1):fmtDate(k.t);
+ctx.fillText(label,x,rect.y+rect.h+14);
+}
+ctx.restore();
+}
+function drawPriceTag(y,price,rect){
+ctx.save();ctx.fillStyle=getCss('--accent');
+var x=rect.x+rect.w;ctx.fillRect(x,y-9,LAYOUT.right-6,18);
+ctx.fillStyle='#111';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+ctx.fillText(fmtNum(price),x+4,y+4);ctx.restore();
+}
+function drawCrosshair(rect,rng,x,y){
+if(x<rect.x||x>rect.x+rect.w||y<rect.y||y>rect.y+rect.h)return;
+ctx.save();ctx.strokeStyle='rgba(215,221,229,.45)';ctx.setLineDash([3,3]);
+ctx.beginPath();ctx.moveTo(x,rect.y);ctx.lineTo(x,rect.y+rect.h);ctx.stroke();
+ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(rect.x+rect.w,y);ctx.stroke();ctx.restore();
+var p=priceForY(y,rect,rng);
+ctx.save();ctx.fillStyle='#2a323d';ctx.fillRect(rect.x+rect.w,y-9,LAYOUT.right-6,18);
+ctx.fillStyle=getCss('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+ctx.fillText(fmtNum(p),rect.x+rect.w+4,y+4);ctx.restore();
+}
+var hover={active:false,x:0,y:0};
 function updateHoverCandle(){
-  const rect = plotRect();
-  if (hover.x < rect.x || hover.x > rect.x + rect.w || hover.y < rect.y || hover.y > rect.y + rect.h) {
-    $('#ohlc').style.display = 'none'; return;
-  }
-  const n = state.view.end - state.view.start;
-  if (n <= 0) return;
-  const rel = (hover.x - rect.x) / rect.w;
-  const idx = Math.round(rel * n) + state.view.start;
-  const c = state.candles;
-  if (idx < 0 || idx >= c.length) { $('#ohlc').style.display = 'none'; return; }
-  showOhlc(c.at(idx));
+var rect=plotRect();
+if(hover.x<rect.x||hover.x>rect.x+rect.w||hover.y<rect.y||hover.y>rect.y+rect.h){$('#ohlc').style.display='none';return;}
+var n=state.view.end-state.view.start;if(n<=0)return;
+var rel=(hover.x-rect.x)/rect.w,idx=Math.round(rel*n)+state.view.start,c=state.candles;
+if(idx<0||idx>=c.length){$('#ohlc').style.display='none';return;}
+showOhlc(c[idx]);
 }
 function showOhlc(k){
-  const el = $('#ohlc');
-  const d = new Date(k.t);
-  const dt = pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
-  const color = k.c >= k.o ? getCss('--up') : getCss('--down');
-  el.innerHTML = '<span>' + dt + '</span>  <b style="color:' + color + '">O ' + fmtNum(k.o) +
-    ' H ' + fmtNum(k.h) + ' L ' + fmtNum(k.l) + ' C ' + fmtNum(k.c) + '</b>  <span>V ' +
-    Math.round(k.v).toLocaleString('ru-RU') + '</span>';
-  el.style.display = 'block';
+var el=$('#ohlc'),d=new Date(k.t);
+var dt=pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+var color=k.c>=k.o?getCss('--up'):getCss('--down');
+el.innerHTML='<span>'+dt+'</span>  <b style="color:'+color+'">O '+fmtNum(k.o)+' H '+fmtNum(k.h)+' L '+fmtNum(k.l)+' C '+fmtNum(k.c)+'</b>  <span>V '+Math.round(k.v).toLocaleString('ru-RU')+'</span>';
+el.style.display='block';
 }
-cv.addEventListener('mousemove', e => {
-  const r = cv.getBoundingClientRect();
-  hover.active = true; hover.x = e.clientX - r.left; hover.y = e.clientY - r.top;
-  updateHoverCandle(); draw();
+cv.addEventListener('mousemove',function(e){
+var r=cv.getBoundingClientRect();
+hover.active=true;hover.x=e.clientX-r.left;hover.y=e.clientY-r.top;
+updateHoverCandle();draw();
 });
-cv.addEventListener('mouseleave', () => { hover.active = false; $('#ohlc').style.display='none'; draw(); });
-
-/* ---------- 12. Зум и панорама ---------- */
-function zoomAt(factor, clientX){
-  const c = state.candles;
-  if (!c.length) return;
-  const rect = plotRect();
-  const n = state.view.end - state.view.start;
-  if (n <= 0) return;
-  const rel = Math.max(0, Math.min(1, (clientX - rect.x) / rect.w));
-  const anchor = state.view.start + rel * n;
-  let newN = Math.round(n * factor);
-  newN = Math.max(10, Math.min(c.length - 1, newN));
-  let ns = Math.round(anchor - rel * newN);
-  let ne = ns + newN;
-  if (ns < 0) { ns = 0; ne = newN; }
-  if (ne > c.length - 1) { ne = c.length - 1; ns = ne - newN; }
-  if (ns < 0) ns = 0;
-  state.view.start = ns;
-  state.view.end = ne;
-  draw();
+cv.addEventListener('mouseleave',function(){hover.active=false;$('#ohlc').style.display='none';draw();});
+function zoomAt(factor,clientX){
+var c=state.candles;if(!c.length)return;
+var rect=plotRect(),n=state.view.end-state.view.start;if(n<=0)return;
+var rel=Math.max(0,Math.min(1,(clientX-rect.x)/rect.w));
+var anchor=state.view.start+rel*n;
+var newN=Math.round(n*factor);newN=Math.max(10,Math.min(c.length-1,newN));
+var ns=Math.round(anchor-rel*newN),ne=ns+newN;
+if(ns<0){ns=0;ne=newN;}
+if(ne>c.length-1){ne=c.length-1;ns=ne-newN;}
+if(ns<0)ns=0;
+state.view.start=ns;state.view.end=ne;draw();
 }
-cv.addEventListener('wheel', e => {
-  e.preventDefault();
-  const r = cv.getBoundingClientRect();
-  const factor = e.deltaY > 0 ? 1.15 : 0.87;
-  zoomAt(factor, e.clientX - r.left);
-}, {passive:false});
-
-let drag = null;
-cv.addEventListener('mousedown', e => {
-  drag = {x:e.clientX, start:state.view.start, end:state.view.end};
+cv.addEventListener('wheel',function(e){
+e.preventDefault();var r=cv.getBoundingClientRect();
+var factor=e.deltaY>0?1.15:0.87;zoomAt(factor,e.clientX-r.left);
+},{passive:false});
+var drag=null;
+cv.addEventListener('mousedown',function(e){drag={x:e.clientX,start:state.view.start,end:state.view.end};});
+window.addEventListener('mousemove',function(e){
+if(!drag)return;
+var rect=plotRect(),dx=e.clientX-drag.x,n=drag.end-drag.start;if(n<=0)return;
+var shift=Math.round((dx/rect.w)*n);
+var ns=drag.start-shift,ne=drag.end-shift,c=state.candles;
+if(ns<0){ne-=ns;ns=0;}
+if(ne>c.length-1){ns-=(ne-(c.length-1));ne=c.length-1;}
+if(ns<0)ns=0;
+state.view.start=ns;state.view.end=ne;draw();
 });
-window.addEventListener('mousemove', e => {
-  if (!drag) return;
-  const rect = plotRect();
-  const dx = e.clientX - drag.x;
-  const n = drag.end - drag.start;
-  if (n <= 0) return;
-  const shift = Math.round((dx / rect.w) * n);
-  let ns = drag.start - shift, ne = drag.end - shift;
-  const c = state.candles;
-  if (ns < 0) { ne -= ns; ns = 0; }
-  if (ne > c.length - 1) { ns -= (ne - (c.length - 1)); ne = c.length - 1; }
-  if (ns < 0) ns = 0;
-  state.view.start = ns; state.view.end = ne;
-  draw();
-});
-window.addEventListener('mouseup', () => { drag = null; });
-
-/* ---------- 13. Тач: панорама + пинч ---------- */
-let touchDrag = null;
-let pinch = null;
-
-function touchDist(t1, t2){
-  return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+window.addEventListener('mouseup',function(){drag=null;});
+var touchDrag=null,pinch=null;
+function touchDist(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);}
+cv.addEventListener('touchstart',function(e){
+var r=cv.getBoundingClientRect();
+if(e.touches.length===1){
+var t0=e.touches[0];
+touchDrag={x:t0.clientX-r.left,start:state.view.start,end:state.view.end};
+hover.active=true;hover.x=t0.clientX-r.left;hover.y=t0.clientY-r.top;
+updateHoverCandle();draw();
+}else if(e.touches.length===2){
+pinch={d:touchDist(e.touches[0],e.touches[1]),n:state.view.end-state.view.start,mid:(e.touches[0].clientX+e.touches[1].clientX)/2-r.left,start:state.view.start,end:state.view.end};
+touchDrag=null;
 }
-cv.addEventListener('touchstart', e => {
-  const r = cv.getBoundingClientRect();
-  if (e.touches.length === 1) {
-    const t0 = e.touches.at(0);
-    touchDrag = {x: t0.clientX - r.left, start: state.view.start, end: state.view.end};
-    hover.active = true;
-    hover.x = t0.clientX - r.left;
-    hover.y = t0.clientY - r.top;
-    updateHoverCandle();
-    draw();
-  } else if (e.touches.length === 2) {
-    pinch = {d: touchDist(e.touches.at(0), e.touches.at(1)), n: state.view.end - state.view.start,
-             mid: (e.touches.at(0).clientX + e.touches.at(1).clientX) / 2 - r.left,
-             start: state.view.start, end: state.view.end};
-    touchDrag = null;
-  }
-}, {passive:true});
-
-cv.addEventListener('touchmove', e => {
-  const r = cv.getBoundingClientRect();
-  if (e.touches.length === 1 && touchDrag) {
-    const dx = (e.touches.at(0).clientX - r.left) - touchDrag.x;
-    const rect = plotRect();
-    const n = touchDrag.end - touchDrag.start;
-    if (n <= 0) return;
-    const shift = Math.round((dx / rect.w) * n);
-    let ns = touchDrag.start - shift
+},{passive:true});
+cv.addEventListener('touchmove',function(e){
+var r=cv.getBoundingClientRect();
+if(e.touches.length===1&&touchDrag){
+var dx=(e.touches[0].clientX-r.left)-touchDrag.x;
+var rect=plotRect(),n=touchDrag.end-touchDrag.start;if(n<=0)return;
+var shift=Math.round((dx/rect.w)*n);
+var ns=touchDrag.start-shift,ne=touchDrag.end-shift,c=state.candles;
+if(ns<0){ne-=ns;ns=0;}
+if(ne>c.length-1){ns-=(ne-(c.length-1));ne=c.length-1;}
+if(ns<0)ns=0;
+state.view.start=ns;state.view.end=ne;draw();
+}else if(e.touches.length===2&&pinch){
+var newDist=touchDist(e.touches[0],e.touches[1]);
+var factor=pinch.d/newDist;var rect2=plotRect();
+var rel=Math.max(0,Math.min(1,(pinch.mid-rect2.x)/rect2.w));
+var newN=Math.round(pinch.n*factor);newN=Math.max(10,Math.min(state.candles.length-1,newN));
+var anchor=pinch.start+rel*pinch.n;
+var ns2=Math.round(anchor-rel*newN),ne2=ns2+newN;
+if(ns2<0){ns2=0;ne2=newN;}
+if(ne2>state.candles.length-1){ne2=state.candles.length-1;ns2=ne2-newN;}
+if(ns2<0)ns2=0;
+state.view.start=ns2;state.view.end=ne2;draw();
+}
+},{passive:true});
+cv.addEventListener('touchend',function(){
+touchDrag=null;pinch=null;hover.active=false;$('#ohlc').style.display='none';draw();
+},{passive:true});
+function init(){
+setupUi();resize();window.addEventListener('resize',resize);
+loadSecurities().then(function(list){
+securities=list;renderTickerOptions();
+if(securities.some(function(s){return s.sec==='SBER';})){state.ticker='SBER';$('#ticker').value='SBER';}
+else if(securities.length){state.ticker=securities[0].sec;$('#ticker').value=state.ticker;}
+return reloadChart();
+}).then(function(){startAutoRefresh();}).catch(function(e){
+state.err=(e&&e.message)?e.message:String(e);refreshStatus();console.error(e);
+});
+}
+init();
+})();
+</script>
+</body>
+</html>
