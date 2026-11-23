@@ -22,7 +22,7 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #search{width:130px}
 #ticker{max-width:230px}
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
-.tfs button{padding:4px 7px;min-width:32px}
+.tfs button{padding:4px 7px;min-width:36px}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
@@ -62,11 +62,18 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 function CANDLE_URL(t,i,f,s){return BASE+'/securities/'+encodeURIComponent(t)+'/candles.json?interval='+i+'&from='+f+'&start='+s+'&iss.meta=off';}
+
+// Оставлены только 10м и старше (1м, 2м, 3м, 5м убраны)
 var TF_LIST=[
-{key:'1m',label:'1м',iss:1,agg:1},{key:'2m',label:'2м',iss:1,agg:2},{key:'3m',label:'3м',iss:1,agg:3},{key:'5m',label:'5м',iss:1,agg:5},
-{key:'10m',label:'10м',iss:10,agg:1},{key:'15m',label:'15м',iss:1,agg:15},{key:'30m',label:'30м',iss:1,agg:30},
-{key:'1h',label:'1ч',iss:60,agg:1},{key:'2h',label:'2ч',iss:60,agg:2},{key:'4h',label:'4ч',iss:60,agg:4},
-{key:'1d',label:'1Д',iss:24,agg:1},{key:'1w',label:'1Н',iss:7,agg:1},{key:'1M',label:'1М',iss:31,agg:1}
+{key:'10m',label:'10м',iss:10,agg:1},
+{key:'15m',label:'15м',iss:1,agg:15},
+{key:'30m',label:'30м',iss:10,agg:3},
+{key:'1h',label:'1ч',iss:60,agg:1},
+{key:'2h',label:'2ч',iss:60,agg:2},
+{key:'4h',label:'4ч',iss:60,agg:4},
+{key:'1d',label:'1Д',iss:24,agg:1},
+{key:'1w',label:'1Н',iss:7,agg:1},
+{key:'1M',label:'1М',iss:31,agg:1}
 ];
 var TF_BY_KEY={};TF_LIST.forEach(function(t){TF_BY_KEY[t.key]=t;});
 var REFRESH_MS=12000;
@@ -123,6 +130,9 @@ function daysBackFull(tf){
 if(tf.iss===24)return 365*35;
 if(tf.iss===7)return 365*40;
 if(tf.iss===31)return 365*40;
+if(tf.iss===1)return 30;   // 15м через 1м — 30 дней
+if(tf.iss===10)return 365*3; // 10м и 30м (из 10м) — 3 года
+if(tf.iss===60)return 365*5;
 var perCandleMin=tf.iss*(tf.agg||1);
 var needDays=(MAX_CANDLES*perCandleMin)/480*1.8;
 return Math.max(10,Math.ceil(needDays));
@@ -231,13 +241,6 @@ function setStatus(html,isErr){
 var el=$('#status');
 el.innerHTML=html;
 el.style.color=isErr?'#ef5350':'';
-}
-
-function tfDurationMs(tf){
-if(tf.iss===24)return 86400000;
-if(tf.iss===7)return 7*86400000;
-if(tf.iss===31)return 30*86400000;
-return tf.iss*60*1000*(tf.agg||1);
 }
 
 function candleCloseMs(){
@@ -397,7 +400,6 @@ ctx.fillStyle=getCss('--muted');
 ctx.font='13px sans-serif';
 ctx.textAlign='center';
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);
-drawCountdown(rect);
 return;
 }
 drawGrid(rect,rng,visible);
@@ -431,31 +433,50 @@ ctx.font='12px sans-serif';
 ctx.textAlign='left';
 ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
-drawCountdown(rect);
+// Счётчик только когда последняя свеча массива в поле зрения
+if(state.view.end>=state.candles.length-1){
+drawCountdownAtLastCandle(rect,rng,visible);
+}
 }
 
-function drawCountdown(rect){
+function drawCountdownAtLastCandle(rect,rng,visible){
+var c=visible[visible.length-1];
+if(!c)return;
 var closeMs=candleCloseMs();
 if(!closeMs)return;
 var left=closeMs-Date.now();
 var txt=fmtCountdown(left);
-var label='⏳ '+txt;
 var closed=(left<=0);
+var label='⏳ '+txt;
+var count=visible.length;
+var slot=rect.w/count;
+var cx=rect.x+(count-0.5)*slot;
+var yHigh=yForPrice(c.h,rect,rng);
+var yLow=yForPrice(c.l,rect,rng);
+
 ctx.save();
-ctx.font='bold 14px monospace';
+ctx.font='bold 13px monospace';
 var tw=ctx.measureText(label).width;
-var w=tw+22;
-var x=rect.x+rect.w-w-8;
-var y=rect.y+8;
-ctx.fillStyle=closed?'rgba(125,134,148,.20)':'rgba(240,160,32,0.18)';
-ctx.fillRect(x,y,w,26);
-ctx.strokeStyle=closed?getCss('--muted'):getCss('--accent');
+var w=tw+18;
+var h=24;
+var x=cx-w/2;
+// прижимаем к краям plot area
+if(x<rect.x+2)x=rect.x+2;
+if(x+w>rect.x+rect.w-2)x=rect.x+rect.w-2-w;
+// над свечой, если помещается; иначе под свечой
+var y=yHigh-h-6;
+if(y<rect.y+2){y=yLow+6;}
+if(y+h>rect.y+rect.h-2)y=rect.y+rect.h-2-h;
+
+ctx.fillStyle=closed?'rgba(125,134,148,.30)':'rgba(240,160,32,0.92)';
+ctx.fillRect(x,y,w,h);
+ctx.strokeStyle=closed?getCss('--muted'):'#c98a1a';
 ctx.lineWidth=1;
-ctx.strokeRect(x,y,w,26);
-ctx.fillStyle=closed?getCss('--muted'):getCss('--accent');
+ctx.strokeRect(x,y,w,h);
+ctx.fillStyle=closed?getCss('--muted'):'#111';
 ctx.textAlign='center';
 ctx.textBaseline='middle';
-ctx.fillText(label,x+w/2,y+13);
+ctx.fillText(label,x+w/2,y+h/2+1);
 ctx.textBaseline='alphabetic';
 ctx.restore();
 }
