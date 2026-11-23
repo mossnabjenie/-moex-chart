@@ -9,8 +9,8 @@ export async function fetchAllMoexTickers() {
     const rows = json.securities?.data || [];
 
     return rows
-      .filter(r => r[0] && r[1])
-      .map(r => ({ secid: r[0], name: r[1] }))
+      .filter(r => r && r[0])
+      .map(r => ({ secid: r[0], name: r[1] || r[0] }))
       .sort((a, b) => a.secid.localeCompare(b.secid));
   } catch (e) {
     console.error('Ошибка загрузки списка тикеров:', e);
@@ -82,11 +82,11 @@ export async function fetchMoexCandles(ticker, timeframe) {
       // Индексы колонок MOEX: 0:open, 1:close, 2:high, 3:low, 4:value, 5:volume, 6:begin
       rawCandles.push({
         time: mskToUnix(r[6]),
-        open: r[0],
-        high: r[2],
-        low: r[3],
-        close: r[1],
-        volume: r[5]
+        open: Number(r[0]),
+        high: Number(r[2]),
+        low: Number(r[3]),
+        close: Number(r[1]),
+        volume: Number(r[5])
       });
     }
 
