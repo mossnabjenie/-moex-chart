@@ -6,13 +6,14 @@
   <title>MOEX Terminal</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#131722" />
+  <script src="https://unpkg.com"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
     header { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; background: #1e222d; border-bottom: 1px solid #2a2e39; align-items: center; }
     .ticker-box { display: flex; gap: 4px; align-items: center; }
-    input, button { background: #2a2e39; color: #fff; border: 1px solid #363a45; padding: 6px 9px; border-radius: 4px; font-size: 13px; }
-    input:focus { outline: none; border-color: #2962ff; }
+    input, select, button { background: #2a2e39; color: #fff; border: 1px solid #363a45; padding: 6px 8px; border-radius: 4px; font-size: 13px; }
+    input:focus, select:focus { outline: none; border-color: #2962ff; }
     button { cursor: pointer; white-space: nowrap; }
     button:hover { background: #363a45; }
     button.active { background: #2962ff; border-color: #2962ff; font-weight: 600; }
@@ -24,9 +25,10 @@
 <body>
   <header>
     <div class="ticker-box">
-      <input id="ticker-input" list="moex-tickers" value="SBER" placeholder="Поиск тикера..." style="width: 170px;" />
-      <datalist id="moex-tickers"></datalist>
-      <button id="load-btn">Открыть</button>
+      <input id="ticker-search" placeholder="Поиск (SMLT, ВК...)" style="width: 135px;" />
+      <select id="ticker-select" style="width: 190px;">
+        <option value="SBER">SBER — Сбербанк</option>
+      </select>
     </div>
 
     <div id="tf-buttons">
@@ -51,19 +53,18 @@
   <div id="chart"></div>
 
   <script type="module">
-    import { createChart } from 'https://esm.sh';
     import { fetchAllMoexTickers, fetchMoexCandles } from './moexDatafeed.js';
 
+    let allTickers = [];
     let currentTicker = 'SBER';
     let currentTf = '15m';
     let timerId = null;
 
     const statusEl = document.getElementById('status');
-    const tickerInput = document.getElementById('ticker-input');
-    const datalistEl = document.getElementById('moex-tickers');
+    const searchInput = document.getElementById('ticker-search');
+    const tickerSelect = document.getElementById('ticker-select');
 
-    // Создаем график
-    const chart = createChart(document.getElementById('chart'), {
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
       layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
       grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
       crosshair: { mode: 0 },
@@ -78,21 +79,46 @@
       wickUpColor: '#26a69a', wickDownColor: '#ef5350'
     });
 
-    // Подгружаем все тикеры MOEX в выпадающий поиск
-    async function initTickers() {
-      const tickers = await fetchAllMoexTickers();
-      datalistEl.innerHTML = tickers
-        .map(t => `<option value="${t.secid}">${t.name}</option>`)
+    function renderSelectOptions(list) {
+      tickerSelect.innerHTML = list
+        .map(t => `<option value="${t.secid}" ${t.secid === currentTicker ? 'selected' : ''}>${t.secid} — ${t.name}</option>`)
         .join('');
     }
 
-    // Обновление свечей
+    async function initTickers() {
+      allTickers = await fetchAllMoexTickers();
+      renderSelectOptions(allTickers);
+    }
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      const filtered = allTickers.filter(
+        t => t.secid.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
+      );
+      renderSelectOptions(filtered);
+      if (filtered.length > 0 && filtered[0].secid !== currentTicker) {
+        selectTicker(filtered[0].secid);
+      }
+    });
+
+    tickerSelect.addEventListener('change', () => {
+      selectTicker(tickerSelect.value);
+    });
+
+    function selectTicker(secid) {
+      if (!secid) return;
+      currentTicker = secid.toUpperCase();
+      if (timerId) clearInterval(timerId);
+      updateChart(true);
+      timerId = setInterval(() => updateChart(false), 12000);
+    }
+
     async function updateChart(fitContent = false) {
       statusEl.textContent = `Загрузка ${currentTicker} (${currentTf})...`;
       try {
         const candles = await fetchMoexCandles(currentTicker, currentTf);
         if (!candles.length) {
-          statusEl.textContent = `Нет данных по тикеру ${currentTicker}`;
+          statusEl.textContent = `Нет данных: ${currentTicker}`;
           return;
         }
         candleSeries.setData(candles);
@@ -102,27 +128,11 @@
         const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         statusEl.textContent = `${currentTicker}: ${last.close} ₽ (${now})`;
       } catch (e) {
-        statusEl.textContent = 'Ошибка сети MOEX';
+        console.error(e);
+        statusEl.textContent = 'Ошибка загрузки данных';
       }
     }
 
-    function selectTickerAndStart(rawVal) {
-      // Берем только сам тикер до пробела (на случай если выбрано из подсказки)
-      const clean = rawVal.trim().split(' ')[0].toUpperCase();
-      if (!clean) return;
-      currentTicker = clean;
-      tickerInput.value = clean;
-      if (timerId) clearInterval(timerId);
-      updateChart(true);
-      timerId = setInterval(() => updateChart(false), 12000);
-    }
-
-    // События поиска и выбора тикера
-    document.getElementById('load-btn').addEventListener('click', () => selectTickerAndStart(tickerInput.value));
-    tickerInput.addEventListener('change', () => selectTickerAndStart(tickerInput.value));
-    tickerInput.addEventListener('focus', () => tickerInput.select());
-
-    // Переключение таймфреймов
     document.getElementById('tf-buttons').addEventListener('click', (e) => {
       const tf = e.target.dataset.tf;
       if (!tf) return;
@@ -139,7 +149,7 @@
     }
 
     initTickers();
-    selectTickerAndStart('SBER');
+    selectTicker('SBER');
   </script>
 </body>
 </html>
