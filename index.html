@@ -127,7 +127,7 @@ return list;
 });
 }
 
-/* Сколько свечей в торговом дне (480 минут сессии) */
+/* Сколько свечей в торговом дне */
 function candlesPerDay(tf){
 if(tf.iss===24)return 1;
 if(tf.iss===7)return 1/5;
@@ -135,15 +135,19 @@ if(tf.iss===31)return 1/22;
 return 480/(tf.iss*(tf.agg||1));
 }
 
-/* Загрузка диапазона [fromStr; tillStr] с пагинацией */
-function fetchRange(ticker, tf, fromStr, tillStr, maxRows){
+/*
+ * ГЛАВНОЕ ИСПРАВЛЕНИЕ:
+ * iss.reverse=true — start=0 отдаёт САМЫЕ НОВЫЕ свечи.
+ * Сначала берём последние, потом расширяем назад.
+ */
+function fetchRangeReverse(ticker, tf, fromStr, tillStr, maxRows){
 var all=[],start=0,guard=0;
 function step(){
 if(all.length>=maxRows)return Promise.resolve(all);
 if(guard++>=400)return Promise.resolve(all);
 var url=BASE+'/securities/'+encodeURIComponent(ticker)+'/candles.json'
 +'?interval='+tf.iss+'&from='+fromStr+'&till='+tillStr
-+'&start='+start+'&iss.meta=off';
++'&start='+start+'&iss.reverse=true&iss.meta=off';
 return fetchJson(url).then(function(j){
 var c=j.candles;
 if(!c||!Array.isArray(c.data)||c.data.length===0)return all;
@@ -165,23 +169,21 @@ return step();
 }
 
 /*
- * ГЛАВНОЕ ИСПРАВЛЕНИЕ:
- * грузим от СВЕЖЕГО к СТАРОМУ — расширяем окно назад.
- * Гарантия: последние свечи (сегодняшние) всегда попадают в массив первыми.
+ * Загрузка: сначала последние 1500 свечей (reverse),
+ * затем расширение истории назад, пока не наберём targetMax.
  */
 function loadAll(ticker, tf, targetMax, onProgress){
 var collected={};
 var today=todayStr();
 var cpd=candlesPerDay(tf);
-// Стартовое окно: чтобы точно получить ~1500 свечей за раз
 var startDays=Math.max(3,Math.ceil(1500/cpd*1.5));
 if(startDays>365*50)startDays=365*50;
 
 function step(days){
 var fromStr=daysAgoStr(days);
 var stillNeed=targetMax-Object.keys(collected).length;
-var askMax=Math.max(stillNeed+1000,1500);
-return fetchRange(ticker,tf,fromStr,today,askMax).then(function(batch){
+var askMax=Math.max(stillNeed+800,1500);
+return fetchRangeReverse(ticker,tf,fromStr,today,askMax).then(function(batch){
 for(var i=0;i<batch.length;i++)collected[batch[i].t]=batch[i];
 var total=Object.keys(collected).length;
 if(onProgress)onProgress(total);
@@ -201,12 +203,12 @@ return arr;
 });
 }
 
-/* Только хвост — для автообновления */
+/* Только хвост — для автообновления (reverse, последние n свечей) */
 function loadTail(ticker, tf, nCandles){
 var cpd=candlesPerDay(tf);
 var days=Math.max(2,Math.ceil(nCandles/cpd*1.6));
 if(days>365*50)days=365*50;
-return fetchRange(ticker,tf,daysAgoStr(days),todayStr(),Math.max(nCandles*2,800));
+return fetchRangeReverse(ticker,tf,daysAgoStr(days),todayStr(),Math.max(nCandles*2,800));
 }
 
 function aggregate(candles,agg){
