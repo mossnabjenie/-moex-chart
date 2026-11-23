@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
-<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23131722","theme_color":"%23131722","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23131722%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
-<meta name="theme-color" content="#131722">
+<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23131722%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
+<meta name="theme-color" content="#080a0e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
 <style>
-:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
+:root{--bg:#131722;--panel:#1a2030;--chart-bg:#080a0e;--grid:#1c2230;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%}
@@ -35,12 +35,11 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #db-panel input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
 #db-panel button{padding:4px 8px;font-size:11px}
 #db-panel .hint{color:var(--muted);font-size:11px;font-style:italic}
-#db-panel .color-btn{padding:4px 10px !important;font-weight:600 !important}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-#ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
+#ohlc{position:absolute;top:8px;left:8px;background:rgba(8,10,14,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
 #ohlc span{color:var(--muted)}
-#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(19,23,34,.6);pointer-events:none}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(8,10,14,.6);pointer-events:none}
 #loading.hide{display:none}
 #db-badge{position:absolute;top:8px;right:70px;background:rgba(32,188,34,.9);color:#000;font-weight:700;font-size:11px;padding:4px 8px;border-radius:4px;display:none;pointer-events:none;z-index:2}
 #db-badge.on{display:block}
@@ -51,7 +50,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <header>
 <div class="row">
 <select id="ticker" title="Тикер"></select>
-<input id="search" placeholder="поиск: SBER / Сбер" autocomplete="off">
+<input id="search" placeholder="поиск: VKCO / Сбер" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
 <button id="btn-db" class="btn-db-main" title="Открыть настройки Darvas Box">📦 Darvas Box</button>
@@ -101,10 +100,10 @@ var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.c
 
 /* Приоритетные тикеры — идут первыми в выпадающем списке */
 var PRIORITY_GROUPS=[
-['VK'],
+['VKCO'],
 ['OZON'],
 ['AFKS'],
-['X5','FIVE']  // X5 Group: новый тикер X5, старый FIVE — берём что найдётся
+['X5','FIVE']
 ];
 
 var TF_LIST=[
@@ -124,6 +123,10 @@ var MAX_CANDLES=10000;
 var PAGE_SIZE=500;
 var MSK_OFFSET=3*3600*1000;
 var END_HOUR_MSK=23,END_MIN_MSK=50;
+
+var EMA20_COLOR='#ffffff';
+var EMA200_COLOR='#4fc3f7';
+var EMA_WIDTH=2;
 
 var $=function(s){return document.querySelector(s);};
 function pad2(n){return (n<10?'0':'')+n;}
@@ -269,7 +272,35 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* DARVAS BOX — порт Pine */
+/* ============ EMA ============ */
+function computeEMA(values, period){
+var n=values.length;
+var ema=new Array(n);
+if(n===0)return ema;
+var k=2/(period+1);
+var sum=0;
+for(var i=0;i<n;i++){
+if(i<period-1){
+ema[i]=null;
+sum+=values[i];
+}else if(i===period-1){
+sum+=values[i];
+ema[i]=sum/period;
+}else{
+ema[i]=values[i]*k+ema[i-1]*(1-k);
+}
+}
+return ema;
+}
+
+function recomputeIndicators(){
+var closes=state.candles.map(function(c){return c.c;});
+state.ema20=computeEMA(closes,20);
+state.ema200=computeEMA(closes,200);
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
+}
+
+/* ============ DARVAS BOX ============ */
 function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
@@ -290,16 +321,16 @@ k1[i]=mx1;k2[i]=mx2;k3[i]=mx3;LL[i]=mn;
 var nh=NaN,barsSince=-1,topBox=NaN,bottomBox=NaN,topBoxPrev=NaN,bottomBoxPrev=NaN;
 var activeBox=null;
 
-for(var i=0;i<n;i++){
-var k1Prev=(i>0)?k1[i-1]:-Infinity;
-if(i>0 && candles[i].h>k1Prev){nh=candles[i].h;barsSince=0;}
+for(var i2=0;i2<n;i2++){
+var k1Prev=(i2>0)?k1[i2-1]:-Infinity;
+if(i2>0 && candles[i2].h>k1Prev){nh=candles[i2].h;barsSince=0;}
 else if(barsSince>=0){barsSince++;}
 
-var box1=k3[i]<k2[i];
+var box1=k3[i2]<k2[i2];
 topBoxPrev=topBox;bottomBoxPrev=bottomBox;
 
 if(barsSince===boxp-2 && box1){
-topBox=nh;bottomBox=LL[i];
+topBox=nh;bottomBox=LL[i2];
 }
 
 var changed=false;
@@ -308,27 +339,24 @@ if(isNaN(topBoxPrev)||topBox!==topBoxPrev||bottomBox!==bottomBoxPrev)changed=tru
 }
 
 if(changed){
-if(activeBox && activeBox.left<i){activeBox.right=i-1;boxes.push(activeBox);}
-activeBox={left:i,right:i,top:topBox,bottom:bottomBox};
+if(activeBox && activeBox.left<i2){activeBox.right=i2-1;boxes.push(activeBox);}
+activeBox={left:i2,right:i2,top:topBox,bottom:bottomBox};
 }else if(activeBox){
-activeBox.right=i;
+activeBox.right=i2;
 }
 }
 if(activeBox)boxes.push(activeBox);
 return boxes;
 }
 
-function recomputeDarvas(){
-if(!state.candles.length){state.db.boxes=[];return;}
-state.db.boxes=computeDarvas(state.candles,state.db.boxp);
-}
-
-/* STATE — по умолчанию 10м */
+/* ============ STATE ============ */
 var state={
 ticker:'SBER',
 tfKey:'10m',
 candles:[],
 rawIss:[],
+ema20:[],
+ema200:[],
 view:{start:0,end:0},
 loading:false,
 lastUpdate:0,
@@ -338,14 +366,13 @@ db:{enabled:false,boxp:10,thickness:1.5,boxes:[]}
 var securities=[];
 var refreshTimer=null;
 
-/* UI */
+/* ============ UI ============ */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
 var f=filter.trim().toLowerCase();
 var items=!f?securities.slice():securities.filter(function(s){return s.sec.toLowerCase().indexOf(f)>=0||s.name.toLowerCase().indexOf(f)>=0;});
 
-// Приоритетные тикеры в начало
 items.sort(function(a,b){
 var ra=priorityRank(a.sec), rb=priorityRank(b.sec);
 if(ra!==rb)return ra-rb;
@@ -391,7 +418,7 @@ state.db.enabled=e.target.checked;
 saveDbSettings();
 $('#btn-db').classList.toggle('active',state.db.enabled);
 $('#db-badge').classList.toggle('on',state.db.enabled);
-if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 draw();
 });
 
@@ -402,7 +429,7 @@ e.target.value=v;
 state.db.boxp=v;
 saveDbSettings();
 $('#db-badge').textContent='Darvas '+v;
-if(state.db.enabled)recomputeDarvas();
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
 
@@ -411,7 +438,7 @@ $('#db-len').value=10;
 state.db.boxp=10;
 saveDbSettings();
 $('#db-badge').textContent='Darvas 10';
-if(state.db.enabled)recomputeDarvas();
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
 
@@ -521,7 +548,7 @@ var n=state.candles.length;
 state.view.end=n-1;
 state.view.start=Math.max(0,n-Math.min(120,n));
 state.lastUpdate=Date.now();
-if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
+recomputeIndicators();
 refreshStatus();
 }).catch(function(e){
 state.err=(e&&e.message)?e.message:String(e);
@@ -551,7 +578,7 @@ if(wasAtEnd&&newLen>0){
 state.view.end=newLen-1;
 state.view.start=Math.max(0,state.view.end-visibleCount);
 }
-if(state.db.enabled)recomputeDarvas();
+recomputeIndicators();
 state.lastUpdate=Date.now();
 state.err='';
 refreshStatus();
@@ -562,7 +589,7 @@ refreshStatus();
 });
 }
 
-/* CANVAS */
+/* ============ CANVAS ============ */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -592,6 +619,13 @@ if(bx.top>mx)mx=bx.top;
 if(bx.bottom<mn)mn=bx.bottom;
 }
 }
+// EMA тоже должны быть видны
+var ema20=state.ema20, ema200=state.ema200;
+for(var i2=s;i2<=e;i2++){
+var v1=ema20[i2], v2=ema200[i2];
+if(v1!=null&&isFinite(v1)){if(v1<mn)mn=v1;if(v1>mx)mx=v1;}
+if(v2!=null&&isFinite(v2)){if(v2<mn)mn=v2;if(v2>mx)mx=v2;}
+}
 if(!isFinite(mn)||!isFinite(mx))return {min:0,max:1};
 var pad=(mx-mn)*0.08||Math.abs(mx)*0.01||1;
 return {min:mn-pad,max:mx+pad};
@@ -607,7 +641,7 @@ var s=Math.max(0,Math.min(state.view.start,Math.max(0,c.length-1)));
 var e=Math.max(s,Math.min(state.view.end,Math.max(0,c.length-1)));
 var visible=c.length?c.slice(s,e+1):[];
 ctx.fillStyle=getCss('--bg');ctx.fillRect(0,0,cssW,cssH);
-ctx.fillStyle=getCss('--panel');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
+ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
 if(!visible.length){
 ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
@@ -631,19 +665,53 @@ var yO=yForPrice(k.o,rect,rng),yC=yForPrice(k.c,rect,rng);
 var top=Math.min(yO,yC),hh=Math.max(1,Math.abs(yC-yO));
 if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
+
+// EMA линии
+drawEMA(rect,rng,s,count,state.ema200,EMA200_COLOR,EMA_WIDTH);
+drawEMA(rect,rng,s,count,state.ema20,EMA20_COLOR,EMA_WIDTH);
+
 var last=visible[visible.length-1];
 var lastY=yForPrice(last.c,rect,rng);
 ctx.save();ctx.strokeStyle=getCss('--accent');ctx.setLineDash([4,4]);
 ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(rect.x+rect.w,lastY);ctx.stroke();ctx.restore();
 drawPriceTag(lastY,last.c,rect);
-ctx.fillStyle=getCss('--muted');ctx.font='12px sans-serif';ctx.textAlign='left';
-var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.';
-ctx.fillText(label,rect.x+6,rect.y+14);
+// Легенда тикера + EMA
+ctx.font='12px sans-serif';ctx.textAlign='left';
+ctx.fillStyle=getCss('--muted');
+ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
+ctx.font='11px sans-serif';
+ctx.fillStyle=EMA20_COLOR;
+ctx.fillText('EMA20',rect.x+6,rect.y+28);
+ctx.fillStyle=EMA200_COLOR;
+ctx.fillText('EMA200',rect.x+60,rect.y+28);
+
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
 }
 
-/* DARVAS — только рамка, без заливки и без подписей */
+function drawEMA(rect,rng,startIdx,visibleCount,arr,color,width){
+if(!arr||!arr.length)return;
+var slot=rect.w/visibleCount;
+ctx.save();
+ctx.strokeStyle=color;
+ctx.lineWidth=width;
+ctx.lineJoin='round';
+ctx.beginPath();
+var started=false;
+for(var i=0;i<visibleCount;i++){
+var idx=startIdx+i;
+var v=arr[idx];
+if(v==null||!isFinite(v)){started=false;continue;}
+var x=rect.x+(i+0.5)*slot;
+var y=yForPrice(v,rect,rng);
+if(!started){ctx.moveTo(x,y);started=true;}
+else ctx.lineTo(x,y);
+}
+ctx.stroke();
+ctx.restore();
+}
+
+/* DARVAS — только рамка */
 function drawDarvas(rect,rng,startIdx,visibleCount){
 var boxes=state.db.boxes;
 var slot=rect.w/visibleCount;
