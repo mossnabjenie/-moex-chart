@@ -61,9 +61,14 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
-function CANDLE_URL(t,i,f,s){return BASE+'/securities/'+encodeURIComponent(t)+'/candles.json?interval='+i+'&from='+f+'&start='+s+'&iss.meta=off';}
+function todayStr(){
+var d=new Date();
+return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+function CANDLE_URL(t,i,f,s){
+return BASE+'/securities/'+encodeURIComponent(t)+'/candles.json?interval='+i+'&from='+f+'&till='+todayStr()+'&start='+s+'&iss.meta=off';
+}
 
-// Оставлены только 10м и старше (1м, 2м, 3м, 5м убраны)
 var TF_LIST=[
 {key:'10m',label:'10м',iss:10,agg:1},
 {key:'15m',label:'15м',iss:1,agg:15},
@@ -98,6 +103,13 @@ if(h>0)return pad2(h)+':'+pad2(m)+':'+pad2(sec);
 return pad2(m)+':'+pad2(sec);
 }
 
+function fmtLastDate(ts){
+var d=new Date(ts),now=new Date();
+var same=(d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate());
+if(same)return pad2(d.getHours())+':'+pad2(d.getMinutes());
+return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(-2);
+}
+
 function fetchJson(url){
 return new Promise(function(resolve,reject){
 var ctrl=new AbortController();
@@ -130,8 +142,8 @@ function daysBackFull(tf){
 if(tf.iss===24)return 365*35;
 if(tf.iss===7)return 365*40;
 if(tf.iss===31)return 365*40;
-if(tf.iss===1)return 30;   // 15м через 1м — 30 дней
-if(tf.iss===10)return 365*3; // 10м и 30м (из 10м) — 3 года
+if(tf.iss===1)return 30;
+if(tf.iss===10)return 365*3;
 if(tf.iss===60)return 365*5;
 var perCandleMin=tf.iss*(tf.agg||1);
 var needDays=(MAX_CANDLES*perCandleMin)/480*1.8;
@@ -139,6 +151,23 @@ return Math.max(10,Math.ceil(needDays));
 }
 function fromDateStr(tf){
 var d=new Date(Date.now()-daysBackFull(tf)*86400000);
+return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+
+// ИСПРАВЛЕНО: правильный расчёт даты для загрузки хвоста (последние N свечей)
+function candlesPerDay(tf){
+if(tf.iss===24)return 1;
+if(tf.iss===7)return 1/7;
+if(tf.iss===31)return 1/30;
+return 480/(tf.iss*(tf.agg||1));
+}
+function tailFromStr(tf,nCandles){
+nCandles=nCandles||500;
+var targetMax=Math.ceil(nCandles*1.2);
+var cpd=candlesPerDay(tf);
+var days=Math.max(1,Math.ceil(targetMax*1.45/cpd));
+if(days>365*50)days=365*50;
+var d=new Date(Date.now()-days*86400000);
 return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
 }
 
@@ -272,12 +301,25 @@ var t=new Date(state.lastUpdate);
 var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
 var last=state.candles.length?state.candles.at(-1):null;
 var price=last?fmtNum(last.c):'—';
+var lastDate=last?fmtLastDate(last.t):'—';
 var cd=state.candles.length?fmtCountdown(candleCloseMs()-Date.now()):'—';
 if(state.err){
 setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);
 }else{
-setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · закр. через <b>'+cd+'</b> · обн. '+upd);
+setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · посл. <b>'+lastDate+'</b> · закр. '+cd+' · обн. '+upd);
 }
+}
+
+function mergeTail(tailRaw){
+if(!tailRaw||!tailRaw.length)return;
+var map={},merged=[];
+for(var i=0;i<state.rawIss.length;i++){map[state.rawIss[i].t]=state.rawIss[i];}
+for(var j=0;j<tailRaw.length;j++){map[tailRaw[j].t]=tailRaw[j];}
+for(var k in map){merged.push(map[k]);}
+merged.sort(function(a,b){return a.t-b.t;});
+state.rawIss=merged;
+var tf=TF_BY_KEY[state.tfKey];
+state.candles=aggregate(merged,tf.agg);
 }
 
 function reloadChart(){
@@ -293,6 +335,14 @@ setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' · '+n+' св�
 }).then(function(raw){
 state.rawIss=raw;
 state.candles=aggregate(raw,tf.agg);
+// ИСПРАВЛЕНО: после основной загрузки обязательно подтягиваем хвост (свежие данные)
+var tailFrom=tailFromStr(tf,500);
+return fetchCandlesAll(state.ticker,tf,500,tailFrom,function(n){
+setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' · хвост '+n+' свечей…');
+}).then(function(tailRaw){
+mergeTail(tailRaw);
+});
+}).then(function(){
 if(!state.candles.length)throw new Error('Нет данных по '+state.ticker);
 var n=state.candles.length;
 state.view.end=n-1;
@@ -317,22 +367,17 @@ refreshTimer=setInterval(autoRefresh,REFRESH_MS);
 function stopAutoRefresh(){
 if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}
 }
+// ИСПРАВЛЕНО: автообновление теперь тащит именно ХВОСТ, а не 1996 год
 function autoRefresh(){
 if(state.loading||!state.candles.length)return;
 var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end>=oldLen-1);
 var visibleCount=state.view.end-state.view.start;
-var tailFrom=fromDateStr(tf);
-fetchCandlesAll(state.ticker,tf,Math.max(1200,PAGE_SIZE*3),tailFrom,null).then(function(raw){
+var tailFrom=tailFromStr(tf,500);
+fetchCandlesAll(state.ticker,tf,500,tailFrom,null).then(function(raw){
 if(!raw.length)return;
-var map={},merged=[];
-for(var i=0;i<state.rawIss.length;i++){map[state.rawIss[i].t]=state.rawIss[i];}
-for(var j=0;j<raw.length;j++){map[raw[j].t]=raw[j];}
-for(var k in map){merged.push(map[k]);}
-merged.sort(function(a,b){return a.t-b.t;});
-state.rawIss=merged;
-state.candles=aggregate(merged,tf.agg);
+mergeTail(raw);
 var newLen=state.candles.length;
 if(wasAtEnd&&newLen>0){
 state.view.end=newLen-1;
@@ -433,7 +478,6 @@ ctx.font='12px sans-serif';
 ctx.textAlign='left';
 ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
-// Счётчик только когда последняя свеча массива в поле зрения
 if(state.view.end>=state.candles.length-1){
 drawCountdownAtLastCandle(rect,rng,visible);
 }
@@ -460,10 +504,8 @@ var tw=ctx.measureText(label).width;
 var w=tw+18;
 var h=24;
 var x=cx-w/2;
-// прижимаем к краям plot area
 if(x<rect.x+2)x=rect.x+2;
 if(x+w>rect.x+rect.w-2)x=rect.x+rect.w-2-w;
-// над свечой, если помещается; иначе под свечой
 var y=yHigh-h-6;
 if(y<rect.y+2){y=yLow+6;}
 if(y+h>rect.y+rect.h-2)y=rect.y+rect.h-2-h;
