@@ -4,12 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
-<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23131722%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
+<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23080a0e%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
 <meta name="theme-color" content="#080a0e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
 <style>
-:root{--bg:#131722;--panel:#1a2030;--chart-bg:#080a0e;--grid:#1c2230;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
+:root{
+--bg:#080a0e;
+--panel:#080a0e;
+--chart-bg:#080a0e;
+--grid:#0a0f16;
+--text:#d7dde5;
+--up:#26a69a;
+--down:#ef5350;
+--accent:#f0a020;
+--muted:#7d8694;
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%}
@@ -26,7 +36,7 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 .btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
 .btn-db-main.active{background:linear-gradient(135deg,#20BC22,#128a14) !important;color:#fff !important;border-color:#20BC22 !important}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
-#db-panel{display:none;background:#0f1420;border-bottom:2px solid var(--accent);padding:10px 12px;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;z-index:4}
+#db-panel{display:none;background:#080a0e;border-bottom:2px solid var(--accent);padding:10px 12px;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;z-index:4}
 #db-panel.open{display:flex}
 #db-panel .grp{display:flex;align-items:center;gap:6px;padding-right:10px;border-right:1px solid #2a323d}
 #db-panel .grp:last-child{border-right:none}
@@ -37,7 +47,7 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #db-panel .hint{color:var(--muted);font-size:11px;font-style:italic}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-#ohlc{position:absolute;top:8px;left:8px;background:rgba(8,10,14,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
+#ohlc{position:absolute;top:8px;left:8px;background:rgba(8,10,14,.85);border:1px solid #1c2230;border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
 #ohlc span{color:var(--muted)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(8,10,14,.6);pointer-events:none}
 #loading.hide{display:none}
@@ -72,7 +82,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
   </div>
   <div class="grp">
-    <span class="hint">Колесо над графиком — зум влево. Колесо над шкалой цен — вертикальный зум. Двойной клик по шкале — сброс.</span>
+    <span class="hint">Колесо над графиком — зум влево. Колесо над шкалой цен — вертикальный зум. Зажать ЛКМ на шкале цен и тащить — тоже вертикальный зум. Двойной клик — сброс.</span>
   </div>
 </div>
 
@@ -144,7 +154,6 @@ if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;
 return 1000;
 }
 
-/* ИСПРАВЛЕНО: fmtCountdown теперь обрабатывает отрицательные значения */
 function fmtCountdown(ms){
 if(ms===0)return '—';
 var neg = ms < 0;
@@ -496,7 +505,6 @@ return endMonth-MSK_OFFSET;
 return last.t+tf.iss*60*1000*(tf.agg||1);
 }
 
-/* ИСПРАВЛЕНО: статус показывает "разрыв: N" если данные отстают */
 function refreshStatus(){
 var t=new Date(state.lastUpdate);
 var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
@@ -508,13 +516,8 @@ var lastTime=last?fmtHm(last.t):'—';
 var cd='—';
 if(state.candles.length){
 var diff=candleCloseMs()-Date.now();
-if(diff>0){
-cd='закр. через '+fmtCountdown(diff);
-}else if(diff<0){
-cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-diff)+'</span>';
-}else{
-cd='—';
-}
+if(diff>0){cd='закр. через '+fmtCountdown(diff);}
+else if(diff<0){cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-diff)+'</span>';}
 }
 if(state.err){
 setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);
@@ -751,7 +754,6 @@ ctx.restore();
 }
 }
 
-/* ИСПРАВЛЕНО: плашка красная при разрыве, показывает отрицательное время */
 function drawCountdownAtLastCandle(rect,rng,visible){
 var c=visible[visible.length-1];if(!c)return;
 var closeMs=candleCloseMs();if(!closeMs)return;
@@ -836,6 +838,27 @@ ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 }
 
 var hover={active:false,x:0,y:0};
+
+cv.addEventListener('mousemove',function(e){
+var r=cv.getBoundingClientRect();
+var mx=e.clientX-r.left;
+var my=e.clientY-r.top;
+hover.active=true;hover.x=mx;hover.y=my;
+updateHoverCandle();draw();
+if(!dragY&&!drag){
+var rect=plotRect();
+var axisX=priceAxisX(rect);
+if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){
+cv.style.cursor='ns-resize';
+}else{
+cv.style.cursor='crosshair';
+}
+}
+});
+cv.addEventListener('mouseleave',function(){
+hover.active=false;$('#ohlc').style.display='none';draw();
+});
+
 function updateHoverCandle(){
 var rect=plotRect();
 if(hover.x<rect.x||hover.x>rect.x+rect.w||hover.y<rect.y||hover.y>rect.y+rect.h){$('#ohlc').style.display='none';return;}
@@ -854,14 +877,6 @@ var color=k.c>=k.o?getCss('--up'):getCss('--down');
 el.innerHTML='<span>'+dt+'</span>  <b style="color:'+color+'">O '+fmtNum(k.o)+' H '+fmtNum(k.h)+' L '+fmtNum(k.l)+' C '+fmtNum(k.c)+'</b>  <span>V '+Math.round(k.v).toLocaleString('ru-RU')+'</span>';
 el.style.display='block';
 }
-cv.addEventListener('mousemove',function(e){
-var r=cv.getBoundingClientRect();
-hover.active=true;hover.x=e.clientX-r.left;hover.y=e.clientY-r.top;
-updateHoverCandle();draw();
-});
-cv.addEventListener('mouseleave',function(){
-hover.active=false;$('#ohlc').style.display='none';draw();
-});
 
 function zoomHorizontalRight(factor){
 var c=state.candles;
@@ -922,15 +937,53 @@ draw();
 }
 });
 
+/* ====== ПЕРЕТАСКИВАНИЕ ====== */
 var drag=null;
+var dragY=null;
+
 cv.addEventListener('mousedown',function(e){
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
+var my=e.clientY-r.top;
 var rect=plotRect();
+var axisX=priceAxisX(rect);
+
+/* Зажали на шкале цен — вертикальный зум-драг */
+if(mx>=axisX){
+var rng=priceRange();
+var clampY=Math.max(rect.y,Math.min(rect.y+rect.h,my));
+dragY={
+startY:e.clientY,
+anchorPrice:priceForY(clampY,rect,rng),
+startMin:rng.min,
+startMax:rng.max
+};
+cv.style.cursor='ns-resize';
+e.preventDefault();
+return;
+}
+
+/* Иначе — обычное горизонтальное перетаскивание */
 if(mx<rect.x||mx>rect.x+rect.w)return;
 drag={x:e.clientX,start:state.view.start,end:state.view.end};
+cv.style.cursor='grabbing';
 });
+
 window.addEventListener('mousemove',function(e){
+if(dragY){
+var dy=e.clientY-dragY.startY;
+var factor=Math.exp(dy/250);
+if(factor<0.05)factor=0.05;
+if(factor>20)factor=20;
+var newMin=dragY.anchorPrice-(dragY.anchorPrice-dragY.startMin)*factor;
+var newMax=dragY.anchorPrice+(dragY.startMax-dragY.anchorPrice)*factor;
+if(newMax-newMin>1e-9){
+state.manualPx=true;
+state.viewPx={min:newMin,max:newMax};
+draw();
+}
+return;
+}
 if(!drag)return;
 var rect=plotRect(),dx=e.clientX-drag.x,n=drag.end-drag.start;if(n<=0)return;
 var shift=Math.round((dx/rect.w)*n);
@@ -940,8 +993,14 @@ if(ne>c.length-1){ns-=(ne-(c.length-1));ne=c.length-1;}
 if(ns<0)ns=0;
 state.view.start=ns;state.view.end=ne;draw();
 });
-window.addEventListener('mouseup',function(){drag=null;});
 
+window.addEventListener('mouseup',function(){
+drag=null;
+dragY=null;
+cv.style.cursor='';
+});
+
+/* Тач */
 var touchDrag=null,pinch=null;
 function touchDist(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);}
 cv.addEventListener('touchstart',function(e){
@@ -1005,7 +1064,7 @@ startAutoRefresh();
 setInterval(function(){
 if(state.candles.length){
 refreshStatus();
-if(!drag&&!touchDrag)draw();
+if(!drag&&!dragY&&!touchDrag)draw();
 }
 },1000);
 }).catch(function(e){
