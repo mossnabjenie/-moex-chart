@@ -72,7 +72,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
   </div>
   <div class="grp">
-    <span class="hint">Зелёный — пробой вверх, красный — вниз, оранжевый — цена внутри.</span>
+    <span class="hint">Колесо над графиком — зум влево от последней свечи. Колесо над шкалой цен — вертикальный зум. Двойной клик по шкале — сброс.</span>
   </div>
 </div>
 
@@ -271,7 +271,6 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* EMA */
 function computeEMA(values, period){
 var n=values.length;
 var ema=new Array(n);
@@ -299,7 +298,6 @@ state.ema200=computeEMA(closes,200);
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 }
 
-/* DARVAS */
 function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
@@ -348,7 +346,6 @@ if(activeBox)boxes.push(activeBox);
 return boxes;
 }
 
-/* STATE — по умолчанию VKCO */
 var state={
 ticker:'VKCO',
 tfKey:'10m',
@@ -357,6 +354,8 @@ rawIss:[],
 ema20:[],
 ema200:[],
 view:{start:0,end:0},
+viewPx:{min:0,max:0},
+manualPx:false,
 loading:false,
 lastUpdate:0,
 err:'',
@@ -365,19 +364,16 @@ db:{enabled:false,boxp:10,thickness:1.5,boxes:[]}
 var securities=[];
 var refreshTimer=null;
 
-/* UI */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
 var f=filter.trim().toLowerCase();
 var items=!f?securities.slice():securities.filter(function(s){return s.sec.toLowerCase().indexOf(f)>=0||s.name.toLowerCase().indexOf(f)>=0;});
-
 items.sort(function(a,b){
 var ra=priorityRank(a.sec), rb=priorityRank(b.sec);
 if(ra!==rb)return ra-rb;
 return a.sec.localeCompare(b.sec);
 });
-
 var cur=state.ticker;
 sel.innerHTML=items.map(function(s){return '<option value="'+esc(s.sec)+'">'+esc(s.sec)+' — '+esc(s.name)+'</option>';}).join('');
 if(items.some(function(s){return s.sec===cur;}))sel.value=cur;
@@ -408,8 +404,7 @@ if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();
 
 $('#btn-db').addEventListener('click',function(e){
 e.stopPropagation();
-var panel=$('#db-panel');
-panel.classList.toggle('open');
+$('#db-panel').classList.toggle('open');
 });
 
 $('#db-enabled').addEventListener('change',function(e){
@@ -546,6 +541,9 @@ state.candles=aggregate(raw,tf.agg);
 var n=state.candles.length;
 state.view.end=n-1;
 state.view.start=Math.max(0,n-Math.min(120,n));
+// сброс вертикального зума при смене тикера/ТФ
+state.manualPx=false;
+state.viewPx={min:0,max:0};
 state.lastUpdate=Date.now();
 recomputeIndicators();
 refreshStatus();
@@ -594,7 +592,6 @@ var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
 
-/* ОТСТУП СПРАВА: 150px пустого места до шкалы цен */
 var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:150};
 
 function resize(){
@@ -615,7 +612,12 @@ h:Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)
 }
 function priceAxisX(rect){return rect.x + rect.w + LAYOUT.paddingRight;}
 function priceRange(){
-var c=state.candles;if(!c.length)return {min:0,max:1};
+var c=state.candles;
+if(!c.length)return {min:0,max:1};
+// если включён вертикальный зум — возвращаем ручной диапазон
+if(state.manualPx && state.viewPx.max > state.viewPx.min){
+return {min: state.viewPx.min, max: state.viewPx.max};
+}
 var s=Math.max(0,Math.min(state.view.start,c.length-1));
 var e=Math.max(s,Math.min(state.view.end,c.length-1));
 var mn=Infinity,mx=-Infinity;
@@ -650,9 +652,7 @@ var e=Math.max(s,Math.min(state.view.end,Math.max(0,c.length-1)));
 var visible=c.length?c.slice(s,e+1):[];
 ctx.fillStyle=getCss('--bg');ctx.fillRect(0,0,cssW,cssH);
 ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
-// фон области отступа справа — тоже тёмный, чтобы граница не бросалась в глаза
-ctx.fillStyle=getCss('--chart-bg');
-ctx.fillRect(rect.x+rect.w, rect.y, LAYOUT.paddingRight, rect.h);
+ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x+rect.w, rect.y, LAYOUT.paddingRight, rect.h);
 if(!visible.length){
 ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
@@ -688,12 +688,12 @@ ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(axisX,lastY);ctx.stroke();ct
 drawPriceTag(lastY,last.c,rect);
 ctx.font='12px sans-serif';ctx.textAlign='left';
 ctx.fillStyle=getCss('--muted');
-ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
+var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.';
+if(state.manualPx)label+=' · Y-zoom (dbl-click)';
+ctx.fillText(label,rect.x+6,rect.y+14);
 ctx.font='11px sans-serif';
-ctx.fillStyle=EMA20_COLOR;
-ctx.fillText('EMA20',rect.x+6,rect.y+28);
-ctx.fillStyle=EMA200_COLOR;
-ctx.fillText('EMA200',rect.x+60,rect.y+28);
+ctx.fillStyle=EMA20_COLOR;ctx.fillText('EMA20',rect.x+6,rect.y+28);
+ctx.fillStyle=EMA200_COLOR;ctx.fillText('EMA200',rect.x+60,rect.y+28);
 
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
@@ -703,9 +703,7 @@ function drawEMA(rect,rng,startIdx,visibleCount,arr,color,width){
 if(!arr||!arr.length)return;
 var slot=rect.w/visibleCount;
 ctx.save();
-ctx.strokeStyle=color;
-ctx.lineWidth=width;
-ctx.lineJoin='round';
+ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineJoin='round';
 ctx.beginPath();
 var started=false;
 for(var i=0;i<visibleCount;i++){
@@ -781,7 +779,6 @@ ctx.textBaseline='alphabetic';ctx.restore();
 function drawGrid(rect,rng,visible){
 ctx.save();ctx.strokeStyle=getCss('--grid');ctx.fillStyle=getCss('--muted');
 ctx.lineWidth=1;ctx.font='10px sans-serif';
-// Ценовые разметки — 8 штук (было 5)
 var steps=8;ctx.textAlign='left';
 var axisX=priceAxisX(rect);
 for(var i=0;i<=steps;i++){
@@ -790,7 +787,6 @@ var y=yForPrice(p,rect,rng);
 ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(axisX,y);ctx.stroke();
 ctx.fillText(fmtNum(p),axisX+6,y+3);
 }
-// Временные разметки — 10 штук (было 6)
 var n=visible.length;
 var target=Math.min(10,n);ctx.textAlign='center';
 for(var j=0;j<target;j++){
@@ -852,28 +848,77 @@ cv.addEventListener('mouseleave',function(){
 hover.active=false;$('#ohlc').style.display='none';draw();
 });
 
-function zoomAt(factor,clientX){
-var c=state.candles;if(!c.length)return;
-var rect=plotRect(),n=state.view.end-state.view.start;if(n<=0)return;
-var rel=Math.max(0,Math.min(1,(clientX-rect.x)/rect.w));
-var anchor=state.view.start+rel*n;
+/* ============ ЗУМ ============ */
+// Горизонтальный: анкор вправо (state.view.end), тянем только влево
+function zoomHorizontalRight(factor){
+var c=state.candles;
+if(!c.length)return;
+var n=state.view.end-state.view.start;
+if(n<=0)return;
 var newN=Math.round(n*factor);
-newN=Math.max(10,Math.min(c.length,newN));
-var ns=Math.round(anchor-rel*newN),ne=ns+newN;
-if(ns<0){ns=0;ne=newN;}
-if(ne>c.length-1){ne=c.length-1;ns=ne-newN;}
+newN=Math.max(10,Math.min(c.length-1,newN));
+var ne=state.view.end;
+var ns=ne-newN;
 if(ns<0)ns=0;
-state.view.start=ns;state.view.end=ne;draw();
+state.view.start=ns;
+state.view.end=ne;
+draw();
 }
+
+// Вертикальный: анкор к позиции мыши на шкале
+function zoomVertical(factor, mouseY){
+var c=state.candles;
+if(!c.length)return;
+var rect=plotRect();
+var rng=priceRange();
+var anchorPx=priceForY(mouseY,rect,rng);
+var newMin=anchorPx-(anchorPx-rng.min)*factor;
+var newMax=anchorPx+(rng.max-anchorPx)*factor;
+var span=newMax-newMin;
+if(span<0.0001)return;
+if(span>(rng.max-rng.min)*100)return;
+state.manualPx=true;
+state.viewPx={min:newMin,max:newMax};
+draw();
+}
+
 cv.addEventListener('wheel',function(e){
 e.preventDefault();
 var r=cv.getBoundingClientRect();
+var mx=e.clientX-r.left;
+var my=e.clientY-r.top;
+var rect=plotRect();
+var axisX=priceAxisX(rect);
 var factor=e.deltaY>0?1.15:0.87;
-zoomAt(factor,e.clientX-r.left);
+if(my<rect.y||my>rect.y+rect.h)return;
+if(mx>=axisX && mx<=axisX+LAYOUT.right){
+zoomVertical(factor,my);
+}else if(mx<axisX){
+zoomHorizontalRight(factor);
+}
 },{passive:false});
 
+// Двойной клик по шкале цен — сброс вертикального зума
+cv.addEventListener('dblclick',function(e){
+var r=cv.getBoundingClientRect();
+var mx=e.clientX-r.left;
+var rect=plotRect();
+var axisX=priceAxisX(rect);
+if(mx>=axisX){
+state.manualPx=false;
+state.viewPx={min:0,max:0};
+draw();
+}
+});
+
 var drag=null;
-cv.addEventListener('mousedown',function(e){drag={x:e.clientX,start:state.view.start,end:state.view.end};});
+cv.addEventListener('mousedown',function(e){
+var r=cv.getBoundingClientRect();
+var mx=e.clientX-r.left;
+var rect=plotRect();
+if(mx<rect.x||mx>rect.x+rect.w)return; // не тянем за шкалу цен
+drag={x:e.clientX,start:state.view.start,end:state.view.end};
+});
 window.addEventListener('mousemove',function(e){
 if(!drag)return;
 var rect=plotRect(),dx=e.clientX-drag.x,n=drag.end-drag.start;if(n<=0)return;
@@ -938,7 +983,6 @@ resize();
 window.addEventListener('resize',resize);
 loadSecurities().then(function(list){
 securities=list;
-// По умолчанию — VKCO
 if(securities.some(function(s){return s.sec==='VKCO';})){state.ticker='VKCO';}
 else if(securities.some(function(s){return s.sec==='SBER';})){state.ticker='SBER';}
 else if(securities.length){state.ticker=securities[0].sec;}
