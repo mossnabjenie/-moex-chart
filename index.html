@@ -98,7 +98,6 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
-/* Приоритетные тикеры — идут первыми в выпадающем списке */
 var PRIORITY_GROUPS=[
 ['VKCO'],
 ['OZON'],
@@ -272,7 +271,7 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* ============ EMA ============ */
+/* EMA */
 function computeEMA(values, period){
 var n=values.length;
 var ema=new Array(n);
@@ -300,7 +299,7 @@ state.ema200=computeEMA(closes,200);
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 }
 
-/* ============ DARVAS BOX ============ */
+/* DARVAS */
 function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
@@ -349,9 +348,9 @@ if(activeBox)boxes.push(activeBox);
 return boxes;
 }
 
-/* ============ STATE ============ */
+/* STATE — по умолчанию VKCO */
 var state={
-ticker:'SBER',
+ticker:'VKCO',
 tfKey:'10m',
 candles:[],
 rawIss:[],
@@ -366,7 +365,7 @@ db:{enabled:false,boxp:10,thickness:1.5,boxes:[]}
 var securities=[];
 var refreshTimer=null;
 
-/* ============ UI ============ */
+/* UI */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
@@ -589,12 +588,14 @@ refreshStatus();
 });
 }
 
-/* ============ CANVAS ============ */
+/* CANVAS */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
-var LAYOUT={right:62,bottom:22,left:6,top:10};
+
+/* ОТСТУП СПРАВА: 150px пустого места до шкалы цен */
+var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:150};
 
 function resize(){
 var wrap=$('#chartWrap');
@@ -604,7 +605,15 @@ cv.style.width=cssW+'px';cv.style.height=cssH+'px';
 ctx.setTransform(DPR,0,0,DPR,0,0);
 draw();
 }
-function plotRect(){return {x:LAYOUT.left,y:LAYOUT.top,w:Math.max(10,cssW-LAYOUT.left-LAYOUT.right),h:Math.max(10,cssH-LAYOUT.top-LAYOUT.bottom)};}
+function plotRect(){
+return {
+x:LAYOUT.left,
+y:LAYOUT.top,
+w:Math.max(10, cssW - LAYOUT.left - LAYOUT.right - LAYOUT.paddingRight),
+h:Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)
+};
+}
+function priceAxisX(rect){return rect.x + rect.w + LAYOUT.paddingRight;}
 function priceRange(){
 var c=state.candles;if(!c.length)return {min:0,max:1};
 var s=Math.max(0,Math.min(state.view.start,c.length-1));
@@ -619,7 +628,6 @@ if(bx.top>mx)mx=bx.top;
 if(bx.bottom<mn)mn=bx.bottom;
 }
 }
-// EMA тоже должны быть видны
 var ema20=state.ema20, ema200=state.ema200;
 for(var i2=s;i2<=e;i2++){
 var v1=ema20[i2], v2=ema200[i2];
@@ -642,6 +650,9 @@ var e=Math.max(s,Math.min(state.view.end,Math.max(0,c.length-1)));
 var visible=c.length?c.slice(s,e+1):[];
 ctx.fillStyle=getCss('--bg');ctx.fillRect(0,0,cssW,cssH);
 ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
+// фон области отступа справа — тоже тёмный, чтобы граница не бросалась в глаза
+ctx.fillStyle=getCss('--chart-bg');
+ctx.fillRect(rect.x+rect.w, rect.y, LAYOUT.paddingRight, rect.h);
 if(!visible.length){
 ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
@@ -666,16 +677,15 @@ var top=Math.min(yO,yC),hh=Math.max(1,Math.abs(yC-yO));
 if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
 
-// EMA линии
 drawEMA(rect,rng,s,count,state.ema200,EMA200_COLOR,EMA_WIDTH);
 drawEMA(rect,rng,s,count,state.ema20,EMA20_COLOR,EMA_WIDTH);
 
 var last=visible[visible.length-1];
 var lastY=yForPrice(last.c,rect,rng);
+var axisX=priceAxisX(rect);
 ctx.save();ctx.strokeStyle=getCss('--accent');ctx.setLineDash([4,4]);
-ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(rect.x+rect.w,lastY);ctx.stroke();ctx.restore();
+ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(axisX,lastY);ctx.stroke();ctx.restore();
 drawPriceTag(lastY,last.c,rect);
-// Легенда тикера + EMA
 ctx.font='12px sans-serif';ctx.textAlign='left';
 ctx.fillStyle=getCss('--muted');
 ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
@@ -711,30 +721,24 @@ ctx.stroke();
 ctx.restore();
 }
 
-/* DARVAS — только рамка */
 function drawDarvas(rect,rng,startIdx,visibleCount){
 var boxes=state.db.boxes;
 var slot=rect.w/visibleCount;
 var endIdx=startIdx+visibleCount-1;
-
 for(var i=0;i<boxes.length;i++){
 var b=boxes[i];
 if(b.right<startIdx || b.left>endIdx)continue;
-
 var relLeft=Math.max(0, b.left-startIdx);
 var relRight=Math.min(visibleCount-1, b.right-startIdx);
-
 var x1=rect.x+relLeft*slot;
 var x2=rect.x+(relRight+1)*slot;
 var yTop=yForPrice(b.top,rect,rng);
 var yBottom=yForPrice(b.bottom,rect,rng);
-
 var lastC=state.candles[b.right].c;
 var r,g,bl;
 if(lastC>b.top){r=32;g=188;bl=34;}
 else if(lastC<b.bottom){r=255;g=25;bl=25;}
 else{r=255;g=181;bl=34;}
-
 ctx.save();
 ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';
 ctx.lineWidth=state.db.thickness;
@@ -777,15 +781,18 @@ ctx.textBaseline='alphabetic';ctx.restore();
 function drawGrid(rect,rng,visible){
 ctx.save();ctx.strokeStyle=getCss('--grid');ctx.fillStyle=getCss('--muted');
 ctx.lineWidth=1;ctx.font='10px sans-serif';
-var steps=5;ctx.textAlign='left';
+// Ценовые разметки — 8 штук (было 5)
+var steps=8;ctx.textAlign='left';
+var axisX=priceAxisX(rect);
 for(var i=0;i<=steps;i++){
 var p=rng.min+(rng.max-rng.min)*(i/steps);
 var y=yForPrice(p,rect,rng);
-ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(rect.x+rect.w,y);ctx.stroke();
-ctx.fillText(fmtNum(p),rect.x+rect.w+6,y+3);
+ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(axisX,y);ctx.stroke();
+ctx.fillText(fmtNum(p),axisX+6,y+3);
 }
+// Временные разметки — 10 штук (было 6)
 var n=visible.length;
-var target=Math.min(6,n);ctx.textAlign='center';
+var target=Math.min(10,n);ctx.textAlign='center';
 for(var j=0;j<target;j++){
 var idx=Math.floor((n-1)*(j/Math.max(1,target-1)));
 var k=visible[idx];
@@ -799,7 +806,8 @@ ctx.restore();
 }
 function drawPriceTag(y,price,rect){
 ctx.save();ctx.fillStyle=getCss('--accent');
-var x=rect.x+rect.w;ctx.fillRect(x,y-9,LAYOUT.right-6,18);
+var x=priceAxisX(rect);
+ctx.fillRect(x,y-9,LAYOUT.right-6,18);
 ctx.fillStyle='#111';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
 ctx.fillText(fmtNum(price),x+4,y+4);ctx.restore();
 }
@@ -809,10 +817,11 @@ ctx.save();ctx.strokeStyle='rgba(215,221,229,.45)';ctx.setLineDash([3,3]);
 ctx.beginPath();ctx.moveTo(x,rect.y);ctx.lineTo(x,rect.y+rect.h);ctx.stroke();
 ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(rect.x+rect.w,y);ctx.stroke();ctx.restore();
 var p=priceForY(y,rect,rng);
+var axisX=priceAxisX(rect);
 ctx.save();ctx.fillStyle='#2a323d';
-ctx.fillRect(rect.x+rect.w,y-9,LAYOUT.right-6,18);
+ctx.fillRect(axisX,y-9,LAYOUT.right-6,18);
 ctx.fillStyle=getCss('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';
-ctx.fillText(fmtNum(p),rect.x+rect.w+4,y+4);ctx.restore();
+ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 }
 
 var hover={active:false,x:0,y:0};
@@ -929,9 +938,12 @@ resize();
 window.addEventListener('resize',resize);
 loadSecurities().then(function(list){
 securities=list;
+// По умолчанию — VKCO
+if(securities.some(function(s){return s.sec==='VKCO';})){state.ticker='VKCO';}
+else if(securities.some(function(s){return s.sec==='SBER';})){state.ticker='SBER';}
+else if(securities.length){state.ticker=securities[0].sec;}
 renderTickerOptions();
-if(securities.some(function(s){return s.sec==='SBER';})){state.ticker='SBER';$('#ticker').value='SBER';}
-else if(securities.length){state.ticker=securities[0].sec;$('#ticker').value=state.ticker;}
+$('#ticker').value=state.ticker;
 return reloadChart();
 }).then(function(){
 startAutoRefresh();
