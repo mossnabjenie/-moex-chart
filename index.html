@@ -72,7 +72,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
   </div>
   <div class="grp">
-    <span class="hint">Колесо над графиком — зум влево от последней свечи. Колесо над шкалой цен — вертикальный зум. Двойной клик по шкале — сброс.</span>
+    <span class="hint">Колесо над графиком — зум влево. Колесо над шкалой цен — вертикальный зум. Двойной клик по шкале — сброс.</span>
   </div>
 </div>
 
@@ -144,13 +144,18 @@ if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;
 return 1000;
 }
 
+/* ИСПРАВЛЕНО: fmtCountdown теперь обрабатывает отрицательные значения */
 function fmtCountdown(ms){
-if(ms<=0)return '—';
-var s=Math.floor(ms/1000);
+if(ms===0)return '—';
+var neg = ms < 0;
+var a = Math.abs(ms);
+var s=Math.floor(a/1000);
 var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
-if(h>=24)return Math.floor(h/24)+'д '+pad2(h%24)+':'+pad2(m)+':'+pad2(sec);
-if(h>0)return pad2(h)+':'+pad2(m)+':'+pad2(sec);
-return pad2(m)+':'+pad2(sec);
+var str;
+if(h>=24)str=Math.floor(h/24)+'д '+pad2(h%24)+':'+pad2(m)+':'+pad2(sec);
+else if(h>0)str=pad2(h)+':'+pad2(m)+':'+pad2(sec);
+else str=pad2(m)+':'+pad2(sec);
+return neg ? '−'+str : str;
 }
 
 function fetchJson(url){
@@ -491,6 +496,7 @@ return endMonth-MSK_OFFSET;
 return last.t+tf.iss*60*1000*(tf.agg||1);
 }
 
+/* ИСПРАВЛЕНО: статус показывает "разрыв: N" если данные отстают */
 function refreshStatus(){
 var t=new Date(state.lastUpdate);
 var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
@@ -499,11 +505,21 @@ var last=state.candles.length?state.candles.at(-1):null;
 var price=last?fmtNum(last.c):'—';
 var range=first&&last?(fmtShort(first.t)+'→'+fmtShort(last.t)):'—';
 var lastTime=last?fmtHm(last.t):'—';
-var cd=state.candles.length?fmtCountdown(candleCloseMs()-Date.now()):'—';
+var cd='—';
+if(state.candles.length){
+var diff=candleCloseMs()-Date.now();
+if(diff>0){
+cd='закр. через '+fmtCountdown(diff);
+}else if(diff<0){
+cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-diff)+'</span>';
+}else{
+cd='—';
+}
+}
 if(state.err){
 setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);
 }else{
-setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · закр. '+cd);
+setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd);
 }
 }
 
@@ -735,12 +751,13 @@ ctx.restore();
 }
 }
 
+/* ИСПРАВЛЕНО: плашка красная при разрыве, показывает отрицательное время */
 function drawCountdownAtLastCandle(rect,rng,visible){
 var c=visible[visible.length-1];if(!c)return;
 var closeMs=candleCloseMs();if(!closeMs)return;
 var left=closeMs-Date.now();
 var txt=fmtCountdown(left);
-var closed=(left<=0);
+var isLag=(left<0);
 var label='⏳ '+txt;
 var count=visible.length;
 var slot=rect.w/count;
@@ -756,11 +773,19 @@ if(x+w>rect.x+rect.w-2)x=rect.x+rect.w-2-w;
 var y=yHigh-h-6;
 if(y<rect.y+2)y=yLow+6;
 if(y+h>rect.y+rect.h-2)y=rect.y+rect.h-2-h;
-ctx.fillStyle=closed?'rgba(125,134,148,.30)':'rgba(240,160,32,0.92)';
+if(isLag){
+ctx.fillStyle='rgba(239,83,80,0.92)';
+ctx.strokeStyle='#b71c1c';
+}else if(left===0){
+ctx.fillStyle='rgba(125,134,148,0.5)';
+ctx.strokeStyle=getCss('--muted');
+}else{
+ctx.fillStyle='rgba(240,160,32,0.92)';
+ctx.strokeStyle='#c98a1a';
+}
 ctx.fillRect(x,y,w,h);
-ctx.strokeStyle=closed?getCss('--muted'):'#c98a1a';
 ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);
-ctx.fillStyle=closed?getCss('--muted'):'#111';
+ctx.fillStyle=isLag?'#fff':(left===0?getCss('--muted'):'#111');
 ctx.textAlign='center';ctx.textBaseline='middle';
 ctx.fillText(label,x+w/2,y+h/2+1);
 ctx.textBaseline='alphabetic';ctx.restore();
