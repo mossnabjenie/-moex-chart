@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
 <style>
-:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694;--db-green:#20BC22;--db-red:#FF1919;--db-orange:#FFB522}
+:root{--bg:#131722;--panel:#1a2030;--grid:#232a3a;--text:#d7dde5;--up:#26a69a;--down:#ef5350;--accent:#f0a020;--muted:#7d8694}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%}
@@ -26,8 +26,6 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 .btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
 .btn-db-main.active{background:linear-gradient(135deg,#20BC22,#128a14) !important;color:#fff !important;border-color:#20BC22 !important}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
-
-/* Панель настроек Darvas */
 #db-panel{display:none;background:#0f1420;border-bottom:2px solid var(--accent);padding:10px 12px;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;z-index:4}
 #db-panel.open{display:flex}
 #db-panel .grp{display:flex;align-items:center;gap:6px;padding-right:10px;border-right:1px solid #2a323d}
@@ -38,10 +36,6 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 #db-panel button{padding:4px 8px;font-size:11px}
 #db-panel .hint{color:var(--muted);font-size:11px;font-style:italic}
 #db-panel .color-btn{padding:4px 10px !important;font-weight:600 !important}
-#db-panel .color-btn[data-color=green]{background:#20BC22;color:#000;border-color:#20BC22}
-#db-panel .color-btn[data-color=red]{background:#FF1919;color:#fff;border-color:#FF1919}
-#db-panel .color-btn[data-color=orange]{background:#FFB522;color:#000;border-color:#FFB522}
-
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
@@ -64,7 +58,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="status">Загрузка…</div>
 </header>
 
-<!-- Панель настроек Darvas Box -->
 <div id="db-panel">
   <div class="grp">
     <input type="checkbox" id="db-enabled">
@@ -76,22 +69,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <button id="db-reset" title="Сбросить к 10">10</button>
   </div>
   <div class="grp">
-    <label>Толщина:</label>
+    <label>Толщина рамки:</label>
     <input type="number" id="db-thick" min="1" max="6" step="0.5" value="1.5">
   </div>
   <div class="grp">
-    <label>Заливка:</label>
-    <input type="number" id="db-opacity" min="0" max="50" step="5" value="10">
-    <span style="color:var(--muted);font-size:11px">%</span>
-  </div>
-  <div class="grp">
-    <label>Цвета:</label>
-    <button class="color-btn" data-color="green" id="col-green">▲</button>
-    <button class="color-btn" data-color="red" id="col-red">▼</button>
-    <button class="color-btn" data-color="orange" id="col-orange">—</button>
-  </div>
-  <div class="grp">
-    <span class="hint">По умолчанию индикатор выключен. Поставьте галочку — боксы появятся.</span>
+    <span class="hint">Зелёный — пробой вверх, красный — вниз, оранжевый — цена внутри.</span>
   </div>
 </div>
 
@@ -116,6 +98,14 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
+
+/* Приоритетные тикеры — идут первыми в выпадающем списке */
+var PRIORITY_GROUPS=[
+['VK'],
+['OZON'],
+['AFKS'],
+['X5','FIVE']  // X5 Group: новый тикер X5, старый FIVE — берём что найдётся
+];
 
 var TF_LIST=[
 {key:'10m',label:'10м',iss:10,agg:1},
@@ -144,6 +134,13 @@ function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth(
 function daysAgoStr(n){var d=new Date(Date.now()-n*86400000);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
 function fmtShort(ts){var d=new Date(ts);return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(-2);}
 function fmtHm(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());}
+
+function priorityRank(sec){
+for(var i=0;i<PRIORITY_GROUPS.length;i++){
+if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;
+}
+return 1000;
+}
 
 function fmtCountdown(ms){
 if(ms<=0)return '—';
@@ -272,7 +269,7 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* ============= DARVAS BOX — порт Pine ============= */
+/* DARVAS BOX — порт Pine */
 function computeDarvas(candles, boxp){
 var n=candles.length;
 var boxes=[];
@@ -326,27 +323,35 @@ if(!state.candles.length){state.db.boxes=[];return;}
 state.db.boxes=computeDarvas(state.candles,state.db.boxp);
 }
 
-/* ============= STATE ============= */
+/* STATE — по умолчанию 10м */
 var state={
 ticker:'SBER',
-tfKey:'1d',
+tfKey:'10m',
 candles:[],
 rawIss:[],
 view:{start:0,end:0},
 loading:false,
 lastUpdate:0,
 err:'',
-db:{enabled:false,boxp:10,thickness:1.5,opacity:10,boxes:[]}
+db:{enabled:false,boxp:10,thickness:1.5,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
 
-/* ============= UI ============= */
+/* UI */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
 var f=filter.trim().toLowerCase();
-var items=!f?securities:securities.filter(function(s){return s.sec.toLowerCase().indexOf(f)>=0||s.name.toLowerCase().indexOf(f)>=0;});
+var items=!f?securities.slice():securities.filter(function(s){return s.sec.toLowerCase().indexOf(f)>=0||s.name.toLowerCase().indexOf(f)>=0;});
+
+// Приоритетные тикеры в начало
+items.sort(function(a,b){
+var ra=priorityRank(a.sec), rb=priorityRank(b.sec);
+if(ra!==rb)return ra-rb;
+return a.sec.localeCompare(b.sec);
+});
+
 var cur=state.ticker;
 sel.innerHTML=items.map(function(s){return '<option value="'+esc(s.sec)+'">'+esc(s.sec)+' — '+esc(s.name)+'</option>';}).join('');
 if(items.some(function(s){return s.sec===cur;}))sel.value=cur;
@@ -375,15 +380,12 @@ if(first){$('#ticker').value=first.value;state.ticker=first.value;reloadChart();
 }
 });
 
-/* Открыть/закрыть панель Darvas */
 $('#btn-db').addEventListener('click',function(e){
 e.stopPropagation();
 var panel=$('#db-panel');
-var open=!panel.classList.contains('open');
-panel.classList.toggle('open',open);
+panel.classList.toggle('open');
 });
 
-/* Чекбокс вкл/выкл */
 $('#db-enabled').addEventListener('change',function(e){
 state.db.enabled=e.target.checked;
 saveDbSettings();
@@ -393,27 +395,26 @@ if(state.db.enabled)recomputeDarvas();else state.db.boxes=[];
 draw();
 });
 
-/* Длина */
 $('#db-len').addEventListener('change',function(e){
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
 e.target.value=v;
 state.db.boxp=v;
 saveDbSettings();
+$('#db-badge').textContent='Darvas '+v;
 if(state.db.enabled)recomputeDarvas();
 draw();
 });
 
-/* Сброс к 10 */
 $('#db-reset').addEventListener('click',function(){
 $('#db-len').value=10;
 state.db.boxp=10;
 saveDbSettings();
+$('#db-badge').textContent='Darvas 10';
 if(state.db.enabled)recomputeDarvas();
 draw();
 });
 
-/* Толщина */
 $('#db-thick').addEventListener('change',function(e){
 var v=parseFloat(e.target.value)||1.5;
 v=Math.max(1,Math.min(6,v));
@@ -422,38 +423,6 @@ state.db.thickness=v;
 saveDbSettings();
 draw();
 });
-
-/* Прозрачность */
-$('#db-opacity').addEventListener('change',function(e){
-var v=parseInt(e.target.value,10);
-if(isNaN(v))v=10;
-v=Math.max(0,Math.min(50,v));
-e.target.value=v;
-state.db.opacity=v;
-saveDbSettings();
-draw();
-});
-
-/* Цвета — переключатели-заглушки, показывают, что цвета такие же как в Pine */
-$('#col-green').addEventListener('click',function(){toast('Зелёный: пробой вверх (close > top)');});
-$('#col-red').addEventListener('click',function(){toast('Красный: пробой вниз (close < bottom)');});
-$('#col-orange').addEventListener('click',function(){toast('Оранжевый: цена внутри бокса');});
-}
-
-/* Маленькое всплывающее сообщение */
-var toastT=null;
-function toast(msg){
-var el=document.getElementById('toast');
-if(!el){
-el=document.createElement('div');
-el.id='toast';
-el.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(240,160,32,.95);color:#111;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:600;z-index:999;pointer-events:none;transition:opacity .3s;opacity:0';
-document.body.appendChild(el);
-}
-el.textContent=msg;
-el.style.opacity='1';
-if(toastT)clearTimeout(toastT);
-toastT=setTimeout(function(){el.style.opacity='0';},2500);
 }
 
 function saveDbSettings(){
@@ -461,7 +430,6 @@ try{
 localStorage.setItem('db_enabled',state.db.enabled?'1':'0');
 localStorage.setItem('db_boxp',String(state.db.boxp));
 localStorage.setItem('db_thick',String(state.db.thickness));
-localStorage.setItem('db_opacity',String(state.db.opacity));
 }catch(e){}
 }
 function loadDbSettings(){
@@ -469,12 +437,10 @@ try{
 if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;
 var v=localStorage.getItem('db_boxp');if(v){var n=parseInt(v,10);if(n>=2&&n<=200)state.db.boxp=n;}
 var t=localStorage.getItem('db_thick');if(t){var f=parseFloat(t);if(f>=1&&f<=6)state.db.thickness=f;}
-var o=localStorage.getItem('db_opacity');if(o){var p=parseInt(o,10);if(p>=0&&p<=50)state.db.opacity=p;}
 }catch(e){}
 $('#db-enabled').checked=state.db.enabled;
 $('#db-len').value=state.db.boxp;
 $('#db-thick').value=state.db.thickness;
-$('#db-opacity').value=state.db.opacity;
 $('#btn-db').classList.toggle('active',state.db.enabled);
 $('#db-badge').classList.toggle('on',state.db.enabled);
 $('#db-badge').textContent='Darvas '+state.db.boxp;
@@ -596,7 +562,7 @@ refreshStatus();
 });
 }
 
-/* ============= CANVAS ============= */
+/* CANVAS */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -677,7 +643,7 @@ if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
 if(state.view.end>=state.candles.length-1)drawCountdownAtLastCandle(rect,rng,visible);
 }
 
-/* DARVAS BOX — отрисовка */
+/* DARVAS — только рамка, без заливки и без подписей */
 function drawDarvas(rect,rng,startIdx,visibleCount){
 var boxes=state.db.boxes;
 var slot=rect.w/visibleCount;
@@ -701,27 +667,14 @@ if(lastC>b.top){r=32;g=188;bl=34;}
 else if(lastC<b.bottom){r=255;g=25;bl=25;}
 else{r=255;g=181;bl=34;}
 
-var opacity=state.db.opacity/100;
 ctx.save();
-ctx.fillStyle='rgba('+r+','+g+','+bl+','+opacity+')';
 ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';
 ctx.lineWidth=state.db.thickness;
-ctx.fillRect(x1,yTop,x2-x1,yBottom-yTop);
 ctx.strokeRect(x1,yTop,x2-x1,yBottom-yTop);
-
-if(x2-x1>60 && Math.abs(yBottom-yTop)>14){
-ctx.font='10px sans-serif';
-ctx.fillStyle='rgba('+r+','+g+','+bl+',1)';
-ctx.textAlign='right';
-ctx.fillText(fmtNum(b.top), x2-3, yTop+11);
-ctx.textAlign='left';
-ctx.fillText(fmtNum(b.bottom), x2-3-(ctx.measureText(fmtNum(b.bottom)).width), yBottom-3);
-}
 ctx.restore();
 }
 }
 
-/* Остальное */
 function drawCountdownAtLastCandle(rect,rng,visible){
 var c=visible[visible.length-1];if(!c)return;
 var closeMs=candleCloseMs();if(!closeMs)return;
