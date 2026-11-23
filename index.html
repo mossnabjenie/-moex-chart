@@ -96,8 +96,9 @@
         t => t.secid.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
       );
       renderSelectOptions(filtered);
-      if (filtered.length > 0 && filtered[0].secid !== currentTicker) {
-        selectTicker(filtered[0].secid);
+      const firstMatch = filtered.at(0);
+      if (firstMatch && firstMatch.secid !== currentTicker) {
+        selectTicker(firstMatch.secid);
       }
     });
 
@@ -124,12 +125,12 @@
         candleSeries.setData(candles);
         if (fitContent) chart.timeScale().fitContent();
 
-        const last = candles[candles.length - 1];
+        const last = candles.at(-1);
         const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         statusEl.textContent = `${currentTicker}: ${last.close} ₽ (${now})`;
       } catch (e) {
         console.error(e);
-        statusEl.textContent = 'Ошибка загрузки данных';
+        statusEl.textContent = 'Ошибка: ' + e.message;
       }
     }
 
