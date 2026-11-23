@@ -9,8 +9,8 @@ export async function fetchAllMoexTickers() {
     const rows = json.securities?.data || [];
 
     return rows
-      .filter(r => r && r[0])
-      .map(r => ({ secid: r[0], name: r[1] || r[0] }))
+      .filter(r => Array.isArray(r) && r.at(0))
+      .map(r => ({ secid: r.at(0), name: r.at(1) || r.at(0) }))
       .sort((a, b) => a.secid.localeCompare(b.secid));
   } catch (e) {
     console.error('Ошибка загрузки списка тикеров:', e);
@@ -25,7 +25,7 @@ export async function fetchAllMoexTickers() {
 
 // Перевод времени МСК в UNIX timestamp (в секундах)
 function mskToUnix(mskDateStr) {
-  return Math.floor(new Date(mskDateStr.replace(' ', 'T') + '+03:00').getTime() / 1000);
+  return Math.floor(new Date(String(mskDateStr).replace(' ', 'T') + '+03:00').getTime() / 1000);
 }
 
 // Склейка мелких свечей в крупные (2м, 3м, 5м, 15м, 30м, 2ч, 4ч)
@@ -64,8 +64,8 @@ export async function fetchMoexCandles(ticker, timeframe) {
     '1M':  { iss: 31, aggSec: null,  days: 5000 }
   };
 
-  const cfg = tfConfig[timeframe] || tfConfig['15m'];
-  const fromDate = new Date(Date.now() - cfg.days * 86400000).toISOString().split('T')[0];
+  const cfg = tfConfig.hasOwnProperty(timeframe) ? tfConfig[timeframe] : tfConfig['15m'];
+  const fromDate = new Date(Date.now() - cfg.days * 86400000).toISOString().split('T').at(0);
 
   let start = 0;
   let rawCandles = [];
@@ -81,12 +81,12 @@ export async function fetchMoexCandles(ticker, timeframe) {
     for (const r of rows) {
       // Индексы колонок MOEX: 0:open, 1:close, 2:high, 3:low, 4:value, 5:volume, 6:begin
       rawCandles.push({
-        time: mskToUnix(r[6]),
-        open: Number(r[0]),
-        high: Number(r[2]),
-        low: Number(r[3]),
-        close: Number(r[1]),
-        volume: Number(r[5])
+        time: mskToUnix(r.at(6)),
+        open: Number(r.at(0)),
+        high: Number(r.at(2)),
+        low: Number(r.at(3)),
+        close: Number(r.at(1)),
+        volume: Number(r.at(5))
       });
     }
 
