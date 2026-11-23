@@ -24,7 +24,6 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
 .tfs button{padding:4px 7px;min-width:32px}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
-#status .err{color:#ef5350}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
@@ -53,7 +52,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 (function(){
 'use strict';
 
-/* 0. Сброс старых SW */
 try{
 if('serviceWorker' in navigator){
 navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister();});});
@@ -61,7 +59,6 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 }
 }catch(e){}
 
-/* 1. Константы */
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 function CANDLE_URL(t,i,f,s){return BASE+'/securities/'+encodeURIComponent(t)+'/candles.json?interval='+i+'&from='+f+'&start='+s+'&iss.meta=off';}
@@ -75,29 +72,29 @@ var TF_BY_KEY={};TF_LIST.forEach(function(t){TF_BY_KEY[t.key]=t;});
 var REFRESH_MS=12000;
 var MAX_CANDLES=10000;
 var PAGE_SIZE=500;
-var PARALLEL=4;
+var MSK_OFFSET=3*3600*1000;
+var END_HOUR_MSK=23,END_MIN_MSK=50;
 
-/* 2. Утилиты */
 var $=function(s){return document.querySelector(s);};
 function pad2(n){return (n<10?'0':'')+n;}
 function moexToMs(b){return Date.parse(String(b).replace(' ','T')+'+03:00');}
 function fmtDate(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());}
 function fmtNum(v){return v==null?'—':(+v).toFixed(Math.abs(v)<10?3:2);}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
 function fmtCountdown(ms){
 if(ms<=0)return '—';
 var s=Math.floor(ms/1000);
 var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
-if(h>=24)return Math.floor(h/24)+'д '+pad2(h%24)+'ч';
-if(h>0)return h+'ч '+pad2(m)+'м';
+if(h>=24)return Math.floor(h/24)+'д '+pad2(h%24)+':'+pad2(m)+':'+pad2(sec);
+if(h>0)return pad2(h)+':'+pad2(m)+':'+pad2(sec);
 return pad2(m)+':'+pad2(sec);
 }
 
-/* 3. HTTP */
 function fetchJson(url){
 return new Promise(function(resolve,reject){
 var ctrl=new AbortController();
-var t=setTimeout(function(){ctrl.abort();},25000);
+var t=setTimeout(function(){ctrl.abort();},30000);
 fetch(url,{signal:ctrl.signal,cache:'no-store'}).then(function(res){
 clearTimeout(t);
 if(!res.ok)throw new Error('HTTP '+res.status);
@@ -106,7 +103,6 @@ return res.json();
 });
 }
 
-/* 4. Тикеры */
 function loadSecurities(){
 return fetchJson(SEC_URL).then(function(j){
 var d=(j.securities&&j.securities.data)||[];
@@ -123,38 +119,23 @@ return list;
 });
 }
 
-/* 5. Расчёт from с учётом 10000 свечей */
 function daysBackFull(tf){
-if(tf.iss===24)return 365*30;
+if(tf.iss===24)return 365*35;
 if(tf.iss===7)return 365*40;
 if(tf.iss===31)return 365*40;
 var perCandleMin=tf.iss*(tf.agg||1);
 var needDays=(MAX_CANDLES*perCandleMin)/480*1.8;
-return Math.max(7,Math.ceil(needDays));
+return Math.max(10,Math.ceil(needDays));
 }
 function fromDateStr(tf){
 var d=new Date(Date.now()-daysBackFull(tf)*86400000);
 return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
 }
-/* Для автообновления — только хвост ~600 свечей */
-function daysBackTail(tf){
-if(tf.iss===24)return 365*3;
-if(tf.iss===7)return 365*10;
-if(tf.iss===31)return 365*15;
-var perCandleMin=tf.iss*(tf.agg||1);
-var needDays=(600*perCandleMin)/480*1.8;
-return Math.max(2,Math.ceil(needDays));
-}
-function fromDateTail(tf){
-var d=new Date(Date.now()-daysBackTail(tf)*86400000);
-return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
-}
 
-/* 6. Загрузка одной страницы */
 function fetchPage(ticker,intv,from,start){
 return fetchJson(CANDLE_URL(ticker,intv,from,start)).then(function(j){
 var c=j.candles;
-if(!c||!Array.isArray(c.data)||c.data.length===0)return {items:[],size:0};
+if(!c||!Array.isArray(c.data)||c.data.length===0)return [];
 var cols=c.columns||[];
 var iO=cols.indexOf('open'),iC=cols.indexOf('close'),iH=cols.indexOf('high'),iL=cols.indexOf('low'),iV=cols.indexOf('volume'),iB=cols.indexOf('begin');
 var items=[];
@@ -164,31 +145,21 @@ var ts=moexToMs(r.at(iB));
 if(!isFinite(ts))continue;
 items.push({t:ts,o:+r.at(iO),c:+r.at(iC),h:+r.at(iH),l:+r.at(iL),v:+r.at(iV)||0});
 }
-return {items:items,size:c.data.length};
+return items;
 });
 }
 
-/* 7. Параллельная загрузка всех страниц (до maxCandles) */
 function fetchCandlesAll(ticker,tf,maxCandles,fromStr,onProgress){
 var all=[],start=0,guard=0;
 var targetMax=Math.ceil(maxCandles*1.15);
 function step(){
-if(all.length>=targetMax)return Promise.resolve();
-if(guard++>=80)return Promise.resolve();
-var promises=[];
-for(var k=0;k<PARALLEL;k++){
-promises.push(fetchPage(ticker,tf.iss,fromStr,start+k*PAGE_SIZE));
-}
-return Promise.all(promises).then(function(results){
-var anyPartial=false;
-results.forEach(function(r){
-if(r.size<PAGE_SIZE)anyPartial=true;
-r.items.forEach(function(x){all.push(x);});
-});
+if(all.length>=targetMax)return Promise.resolve(all);
+if(guard++>=200)return Promise.resolve(all);
+return fetchPage(ticker,tf.iss,fromStr,start).then(function(items){
+if(items.length===0)return all;
+for(var i=0;i<items.length;i++)all.push(items[i]);
 if(onProgress)onProgress(all.length);
-if(anyPartial)return;
-if(all.length>=targetMax)return;
-start+=PARALLEL*PAGE_SIZE;
+start+=PAGE_SIZE;
 return step();
 });
 }
@@ -203,7 +174,6 @@ if(maxCandles&&res.length>maxCandles)res=res.slice(-maxCandles);
 return res;
 }
 
-/* 8. Агрегация (для 2м/3м/5м/.../4ч) */
 function aggregate(candles,agg){
 if(!agg||agg<=1)return candles;
 var res=[];
@@ -221,12 +191,10 @@ res.push({t:chunk[0].t,o:o,c:c,h:h,l:l,v:v});
 return res;
 }
 
-/* 9. Состояние */
 var state={ticker:'SBER',tfKey:'1d',candles:[],rawIss:[],view:{start:0,end:0},loading:false,lastUpdate:0,err:''};
 var securities=[];
 var refreshTimer=null;
 
-/* 10. UI */
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
@@ -265,22 +233,41 @@ el.innerHTML=html;
 el.style.color=isErr?'#ef5350':'';
 }
 
-/* 11. Длительность свечи и счётчик до закрытия */
 function tfDurationMs(tf){
 if(tf.iss===24)return 86400000;
 if(tf.iss===7)return 7*86400000;
 if(tf.iss===31)return 30*86400000;
 return tf.iss*60*1000*(tf.agg||1);
 }
+
 function candleCloseMs(){
-var last=state.candles[state.candles.length-1];
+var tf=TF_BY_KEY[state.tfKey];
+var last=state.candles.length?state.candles.at(-1):null;
 if(!last)return 0;
-return last.t+tfDurationMs(TF_BY_KEY[state.tfKey]);
+if(tf.iss===24){
+var md=new Date(last.t+MSK_OFFSET);
+var endMsk=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate(),END_HOUR_MSK,END_MIN_MSK,0,0);
+return endMsk-MSK_OFFSET;
 }
+if(tf.iss===7){
+var md=new Date(last.t+MSK_OFFSET);
+var dow=md.getUTCDay();
+var add=(5-dow+7)%7;
+var fri=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate()+add,END_HOUR_MSK,END_MIN_MSK,0,0);
+return fri-MSK_OFFSET;
+}
+if(tf.iss===31){
+var md=new Date(last.t+MSK_OFFSET);
+var endMonth=Date.UTC(md.getUTCFullYear(),md.getUTCMonth()+1,0,END_HOUR_MSK,END_MIN_MSK,0,0);
+return endMonth-MSK_OFFSET;
+}
+return last.t+tf.iss*60*1000*(tf.agg||1);
+}
+
 function refreshStatus(){
 var t=new Date(state.lastUpdate);
 var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
-var last=state.candles.length?state.candles[state.candles.length-1]:null;
+var last=state.candles.length?state.candles.at(-1):null;
 var price=last?fmtNum(last.c):'—';
 var cd=state.candles.length?fmtCountdown(candleCloseMs()-Date.now()):'—';
 if(state.err){
@@ -290,7 +277,6 @@ setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · закр. через <b>'+c
 }
 }
 
-/* 12. Загрузка графика */
 function reloadChart(){
 if(state.loading)return;
 state.loading=true;
@@ -321,7 +307,6 @@ draw();
 });
 }
 
-/* 13. Автообновление — только хвост, без сброса view */
 function startAutoRefresh(){
 stopAutoRefresh();
 refreshTimer=setInterval(autoRefresh,REFRESH_MS);
@@ -335,8 +320,8 @@ var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end>=oldLen-1);
 var visibleCount=state.view.end-state.view.start;
-var tailFrom=fromDateTail(tf);
-fetchCandlesAll(state.ticker,tf,Math.max(800,PAGE_SIZE*2),tailFrom,null).then(function(raw){
+var tailFrom=fromDateStr(tf);
+fetchCandlesAll(state.ticker,tf,Math.max(1200,PAGE_SIZE*3),tailFrom,null).then(function(raw){
 if(!raw.length)return;
 var map={},merged=[];
 for(var i=0;i<state.rawIss.length;i++){map[state.rawIss[i].t]=state.rawIss[i];}
@@ -360,7 +345,6 @@ refreshStatus();
 });
 }
 
-/* 14. Холст */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
@@ -413,6 +397,7 @@ ctx.fillStyle=getCss('--muted');
 ctx.font='13px sans-serif';
 ctx.textAlign='center';
 ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);
+drawCountdown(rect);
 return;
 }
 drawGrid(rect,rng,visible);
@@ -446,7 +431,35 @@ ctx.font='12px sans-serif';
 ctx.textAlign='left';
 ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visible.length+' св.',rect.x+6,rect.y+14);
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
+drawCountdown(rect);
 }
+
+function drawCountdown(rect){
+var closeMs=candleCloseMs();
+if(!closeMs)return;
+var left=closeMs-Date.now();
+var txt=fmtCountdown(left);
+var label='⏳ '+txt;
+var closed=(left<=0);
+ctx.save();
+ctx.font='bold 14px monospace';
+var tw=ctx.measureText(label).width;
+var w=tw+22;
+var x=rect.x+rect.w-w-8;
+var y=rect.y+8;
+ctx.fillStyle=closed?'rgba(125,134,148,.20)':'rgba(240,160,32,0.18)';
+ctx.fillRect(x,y,w,26);
+ctx.strokeStyle=closed?getCss('--muted'):getCss('--accent');
+ctx.lineWidth=1;
+ctx.strokeRect(x,y,w,26);
+ctx.fillStyle=closed?getCss('--muted'):getCss('--accent');
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText(label,x+w/2,y+13);
+ctx.textBaseline='alphabetic';
+ctx.restore();
+}
+
 function drawGrid(rect,rng,visible){
 ctx.save();
 ctx.strokeStyle=getCss('--grid');
@@ -505,7 +518,6 @@ ctx.fillText(fmtNum(p),rect.x+rect.w+4,y+4);
 ctx.restore();
 }
 
-/* 15. Перекрестие */
 var hover={active:false,x:0,y:0};
 function updateHoverCandle(){
 var rect=plotRect();
@@ -543,7 +555,6 @@ $('#ohlc').style.display='none';
 draw();
 });
 
-/* 16. Зум */
 function zoomAt(factor,clientX){
 var c=state.candles;
 if(!c.length)return;
@@ -570,7 +581,6 @@ var factor=e.deltaY>0?1.15:0.87;
 zoomAt(factor,e.clientX-r.left);
 },{passive:false});
 
-/* 17. Панорама мышью */
 var drag=null;
 cv.addEventListener('mousedown',function(e){
 drag={x:e.clientX,start:state.view.start,end:state.view.end};
@@ -594,7 +604,6 @@ draw();
 });
 window.addEventListener('mouseup',function(){drag=null;});
 
-/* 18. Тач */
 var touchDrag=null,pinch=null;
 function touchDist(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);}
 cv.addEventListener('touchstart',function(e){
@@ -655,7 +664,6 @@ $('#ohlc').style.display='none';
 draw();
 },{passive:true});
 
-/* 19. Init */
 function init(){
 setupUi();
 resize();
@@ -673,7 +681,12 @@ $('#ticker').value=state.ticker;
 return reloadChart();
 }).then(function(){
 startAutoRefresh();
-setInterval(function(){if(state.candles.length)refreshStatus();},1000);
+setInterval(function(){
+if(state.candles.length){
+refreshStatus();
+if(!drag&&!touchDrag)draw();
+}
+},1000);
 }).catch(function(e){
 state.err=(e&&e.message)?e.message:String(e);
 refreshStatus();
