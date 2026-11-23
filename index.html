@@ -4,9 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
+
+<!-- PWA: манифест встроен как data-URI, отдельных файлов не требуется -->
+<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23131722","theme_color":"%23131722","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23131722%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
+<meta name="theme-color" content="#131722">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MOEX">
+
 <style>
   :root{
-    --bg:#0e1116; --panel:#161b22; --grid:#222831; --text:#d7dde5;
+    --bg:#131722; --panel:#1a2030; --grid:#232a3a; --text:#d7dde5;
     --up:#26a69a; --down:#ef5350; --accent:#f0a020; --muted:#7d8694;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -31,14 +39,13 @@
   #status .err{color:#ef5350}
   #chartWrap{position:relative;flex:1;min-height:0}
   canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
-  #ohlc{position:absolute;top:8px;left:8px;background:rgba(14,17,22,.82);
+  #ohlc{position:absolute;top:8px;left:8px;background:rgba(19,23,34,.85);
     border:1px solid var(--grid);border-radius:6px;padding:5px 8px;font-size:11px;
     pointer-events:none;display:none;white-space:nowrap;line-height:1.5}
   #ohlc span{color:var(--muted)}
   #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--accent);font-size:15px;background:rgba(14,17,22,.6);pointer-events:none}
+    color:var(--accent);font-size:15px;background:rgba(19,23,34,.6);pointer-events:none}
   #loading.hide{display:none}
-  .legend{font-size:11px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -62,7 +69,7 @@
 (() => {
 'use strict';
 
-/* ---------- 0. Принудительный сброс старых Service Worker (кэш-глюк) ---------- */
+/* ---------- 0. Принудительный сброс старых Service Worker ---------- */
 (async () => {
   try {
     if ('serviceWorker' in navigator) {
@@ -78,11 +85,11 @@
 
 /* ---------- 1. Константы ---------- */
 const BASE = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
-const SEC_URL = `${BASE}/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME`;
+const SEC_URL = BASE + '/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 const CANDLE_URL = (t, intv, from, start) =>
-  `${BASE}/securities/${encodeURIComponent(t)}/candles.json?interval=${intv}&from=${from}&start=${start}&iss.meta=off`;
+  BASE + '/securities/' + encodeURIComponent(t) + '/candles.json?interval=' + intv +
+  '&from=' + from + '&start=' + start + '&iss.meta=off';
 
-// Прямые интервалы MOEX и клиентская склейка
 const TF_LIST = [
   {key:'2m',  label:'2м',  iss:1,  agg:2},
   {key:'3m',  label:'3м',  iss:1,  agg:3},
@@ -104,15 +111,13 @@ const CANDLES_PER_LOAD = 500;
 /* ---------- 2. Утилиты ---------- */
 const $ = s => document.querySelector(s);
 const pad2 = n => (n < 10 ? '0' : '') + n;
-// MOEX begin "YYYY-MM-DD HH:MM:SS" (МСК +03:00) -> UNIX ms
 function moexToMs(begin){
-  // 2024-05-15 10:30:00  =>  Date.parse с +03:00
   const s = String(begin).replace(' ', 'T');
   return Date.parse(s + '+03:00');
 }
 const fmtDate = ts => {
   const d = new Date(ts);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 };
 const fmtNum = v => v == null ? '—' : (+v).toFixed(Math.abs(v) < 10 ? 3 : 2);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -130,10 +135,9 @@ async function fetchJson(url){
 
 /* ---------- 4. Загрузка тикеров ---------- */
 async function loadSecurities(){
-  setStatus('Загрузка списка бумаг…');
   const j = await fetchJson(SEC_URL);
-  const d = j.securities && j.securities.data || [];
-  const cols = j.securities && j.securities.columns || ['SECID','SHORTNAME'];
+  const d = (j.securities && j.securities.data) || [];
+  const cols = (j.securities && j.securities.columns) || ['SECID','SHORTNAME'];
   const iSec = cols.indexOf('SECID'), iName = cols.indexOf('SHORTNAME');
   const list = [];
   const seen = new Set();
@@ -148,22 +152,20 @@ async function loadSecurities(){
   return list;
 }
 
-/* ---------- 5. Загрузка свечей (пагинация) ---------- */
+/* ---------- 5. Загрузка свечей ---------- */
 function monthsAgoFromDate(tf){
-  // Насколько назад тянуть историю (зависит от ТФ)
-  const d = new Date();
-  const m = tf.agg && tf.iss === 1 ? 3 : 24; // минутки — 3 мес, иначе 2 года
-  if (tf.iss === 24) return 5 * 365;          // дни — 5 лет
-  if (tf.iss === 7)  return 10 * 365;         // недели
-  if (tf.iss === 31) return 15 * 365;         // месяцы
-  return m * 30;
+  if (tf.iss === 24) return 5 * 365;
+  if (tf.iss === 7)  return 10 * 365;
+  if (tf.iss === 31) return 15 * 365;
+  if (tf.iss === 60) return 2 * 365;
+  return 90; // минутки
 }
 function fromDateStr(tf){
   const d = new Date(Date.now() - monthsAgoFromDate(tf) * 86400000);
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
 }
-async function fetchCandlesRaw(ticker, tf, limit = 2000){
-  // Пагинация через start, пока не наберём limit или пока не кончится
+async function fetchCandlesRaw(ticker, tf, limit){
+  limit = limit || 2000;
   const out = [];
   const from = fromDateStr(tf);
   let start = 0;
@@ -179,19 +181,13 @@ async function fetchCandlesRaw(ticker, tf, limit = 2000){
           iV = cols.indexOf('volume'), iB = cols.indexOf('begin');
     const batch = c.data;
     for (const r of batch) {
-      const begin = r.at(iB);
-      const ts = moexToMs(begin);
+      const ts = moexToMs(r.at(iB));
       if (!isFinite(ts)) continue;
-      out.push({
-        t: ts,
-        o: +r.at(iO), c: +r.at(iC), h: +r.at(iH), l: +r.at(iL),
-        v: +r.at(iV) || 0
-      });
+      out.push({t: ts, o: +r.at(iO), c: +r.at(iC), h: +r.at(iH), l: +r.at(iL), v: +r.at(iV) || 0});
     }
     if (batch.length < CANDLES_PER_LOAD) break;
     start += CANDLES_PER_LOAD;
   }
-  // убрать возможные дубли по времени и отсортировать
   const map = new Map();
   for (const c of out) map.set(c.t, c);
   return [...map.values()].sort((a,b) => a.t - b.t);
@@ -202,8 +198,7 @@ function aggregate(candles, agg){
   for (let i = 0; i < candles.length; i += agg) {
     const chunk = candles.slice(i, i + agg);
     if (!chunk.length) continue;
-    let o = chunk.at(0).o, c = chunk.at(-1).c,
-        h = -Infinity, l = Infinity, v = 0;
+    let o = chunk.at(0).o, c = chunk.at(-1).c, h = -Infinity, l = Infinity, v = 0;
     for (const k of chunk) {
       if (k.h > h) h = k.h;
       if (k.l < l) l = k.l;
@@ -218,36 +213,35 @@ function aggregate(candles, agg){
 const state = {
   ticker: 'SBER',
   tfKey: '1d',
-  candles: [],        // уже с клиентской склейкой
-  rawIss: [],         // сырые свечи текущего iss (для автообновления без перезагрузки)
-  view: {start: 0, end: 0}, // индексы видимого диапазона
-  viewPx: {min: 0, max: 0}, // ценовой диапазон (null => авто)
+  candles: [],
+  rawIss: [],
+  view: {start: 0, end: 0},
+  viewPx: {min: 0, max: 0},
   manualPx: false,
   loading: false,
   lastUpdate: 0,
   err: ''
 };
 let securities = [];
-let secBySec = new Map();
 
-/* ---------- 7. Интерфейс: тикеры и ТФ ---------- */
-function renderTickerOptions(filter = ''){
+/* ---------- 7. UI ---------- */
+function renderTickerOptions(filter){
+  filter = filter || '';
   const sel = $('#ticker');
   const f = filter.trim().toLowerCase();
   const items = !f ? securities :
     securities.filter(s => s.sec.toLowerCase().includes(f) || s.name.toLowerCase().includes(f));
   const cur = state.ticker;
   sel.innerHTML = items.map(s =>
-    `<option value="${esc(s.sec)}">${esc(s.sec)} — ${esc(s.name)}</option>`
+    '<option value="' + esc(s.sec) + '">' + esc(s.sec) + ' — ' + esc(s.name) + '</option>'
   ).join('');
-  // по умолчанию выбран текущий
   if (items.some(s => s.sec === cur)) sel.value = cur;
-  else if (items.length) { sel.value = items.at(0).sec; }
+  else if (items.length) sel.value = items.at(0).sec;
 }
 function setupUi(){
   const tfs = $('#tfs');
   tfs.innerHTML = TF_LIST.map(t =>
-    `<button data-tf="${t.key}" class="${t.key===state.tfKey?'active':''}">${t.label}</button>`
+    '<button data-tf="' + t.key + '" class="' + (t.key===state.tfKey?'active':'') + '">' + t.label + '</button>'
   ).join('');
   tfs.addEventListener('click', e => {
     const b = e.target.closest('button[data-tf]');
@@ -255,10 +249,9 @@ function setupUi(){
     const key = b.dataset.tf;
     if (key === state.tfKey) return;
     state.tfKey = key;
-    [...tfs.querySelectorAll('button')].forEach(x => x.classList.toggle('active', x.dataset.tf === key));
+    tfs.querySelectorAll('button').forEach(x => x.classList.toggle('active', x.dataset.tf === key));
     reloadChart();
   });
-
   $('#ticker').addEventListener('change', e => {
     state.ticker = e.target.value;
     reloadChart();
@@ -271,13 +264,24 @@ function setupUi(){
     }
   });
 }
-function setStatus(text, isErr){
+function setStatus(html, isErr){
   const el = $('#status');
-  el.innerHTML = text;
+  el.innerHTML = html;
   el.classList.toggle('err', !!isErr);
 }
+function refreshStatus(){
+  const t = new Date(state.lastUpdate);
+  const upd = state.lastUpdate ? pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()) : '—';
+  const last = state.candles.at(-1);
+  const price = last ? fmtNum(last.c) : '—';
+  if (state.err) {
+    setStatus('<span class="err">Ошибка: ' + esc(state.err) + '</span>', true);
+  } else {
+    setStatus('<b>' + esc(state.ticker) + '</b> ' + price + ' · обн. ' + upd);
+  }
+}
 
-/* ---------- 8. Загрузка/перезагрузка графика ---------- */
+/* ---------- 8. Загрузка графика ---------- */
 async function reloadChart(){
   if (state.loading) return;
   state.loading = true;
@@ -290,18 +294,16 @@ async function reloadChart(){
     state.rawIss = raw;
     state.candles = aggregate(raw, tf.agg);
     if (!state.candles.length) throw new Error('Нет данных по ' + state.ticker);
-    // видимый диапазон: последние ~120 свечей
     const n = state.candles.length;
     state.view.end = n - 1;
     state.view.start = Math.max(0, n - 120);
     state.manualPx = false;
     state.viewPx = {min: 0, max: 0};
     state.lastUpdate = Date.now();
-    state.err = '';
     refreshStatus();
   } catch (e) {
-    state.err = e && e.message ? e.message : String(e);
-    setStatus(`<span class="err">Ошибка: ${esc(state.err)}</span>`, true);
+    state.err = (e && e.message) ? e.message : String(e);
+    refreshStatus();
     console.error(e);
   } finally {
     state.loading = false;
@@ -323,10 +325,8 @@ async function autoRefresh(){
   if (state.loading || !state.candles.length) return;
   const tf = TF_BY_KEY[state.tfKey];
   try {
-    // Загружаем последние 2 порции сырых свечей, чтобы перекрыть возможные дыры
     const raw = await fetchCandlesRaw(state.ticker, tf, CANDLES_PER_LOAD * 2);
     if (!raw.length) return;
-    // Объединяем: берём историю из state.rawIss и обновляем хвост
     const map = new Map();
     for (const c of state.rawIss) map.set(c.t, c);
     for (const c of raw) map.set(c.t, c);
@@ -336,19 +336,18 @@ async function autoRefresh(){
     state.lastUpdate = Date.now();
     state.err = '';
     refreshStatus();
-    draw(); // зум/сдвиг не трогаем
+    draw();
   } catch (e) {
-    state.err = e && e.message ? e.message : String(e);
+    state.err = (e && e.message) ? e.message : String(e);
     refreshStatus();
   }
 }
 
-/* ---------- 10. Холст и отрисовка ---------- */
+/* ---------- 10. Холст ---------- */
 const cv = $('#cv');
 const ctx = cv.getContext('2d');
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
 let cssW = 0, cssH = 0;
-
 const LAYOUT = {right: 62, bottom: 22, left: 6, top: 10};
 
 function resize(){
@@ -362,23 +361,17 @@ function resize(){
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   draw();
 }
-window.addEventListener('resize', resize);
-
 function plotRect(){
-  return {
-    x: LAYOUT.left,
-    y: LAYOUT.top,
+  return {x: LAYOUT.left, y: LAYOUT.top,
     w: Math.max(10, cssW - LAYOUT.left - LAYOUT.right),
-    h: Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)
-  };
+    h: Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)};
 }
-
 function priceRange(){
   const c = state.candles;
   if (!c.length) return {min: 0, max: 1};
   const s = Math.max(0, Math.min(state.view.start, c.length - 1));
   const e = Math.max(s, Math.min(state.view.end, c.length - 1));
-  if (state.manualPx && state.viewPx.max > state.viewPx.min) return {...state.viewPx};
+  if (state.manualPx && state.viewPx.max > state.viewPx.min) return {min: state.viewPx.min, max: state.viewPx.max};
   let mn = Infinity, mx = -Infinity;
   for (let i = s; i <= e; i++) {
     const k = c.at(i);
@@ -389,7 +382,6 @@ function priceRange(){
   const pad = (mx - mn) * 0.08 || Math.abs(mx) * 0.01 || 1;
   return {min: mn - pad, max: mx + pad};
 }
-
 function xForIndex(i, rect){
   const n = state.view.end - state.view.start;
   if (n <= 0) return rect.x;
@@ -403,6 +395,7 @@ function priceForY(y, rect, rng){
   const k = (rect.y + rect.h - y) / rect.h;
   return rng.min + k * (rng.max - rng.min);
 }
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888'; }
 
 function draw(){
   ctx.clearRect(0, 0, cssW, cssH);
@@ -413,24 +406,18 @@ function draw(){
   const e = Math.max(s, Math.min(state.view.end, Math.max(0, c.length - 1)));
   const visible = c.length ? c.slice(s, e + 1) : [];
 
-  // фон
-  ctx.fillStyle = getCss('--bg');
-  ctx.fillRect(0, 0, cssW, cssH);
-  ctx.fillStyle = getCss('--panel');
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.fillStyle = getCss('--bg'); ctx.fillRect(0, 0, cssW, cssH);
+  ctx.fillStyle = getCss('--panel'); ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
 
   if (!visible.length) {
     ctx.fillStyle = getCss('--muted');
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'center';
+    ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('Нет данных', rect.x + rect.w/2, rect.y + rect.h/2);
     return;
   }
 
-  // сетка
   drawGrid(rect, rng, visible);
 
-  // свечи
   const count = visible.length;
   const slot = rect.w / count;
   const bw = Math.max(1, Math.min(14, slot * 0.7));
@@ -440,56 +427,39 @@ function draw(){
     const up = k.c >= k.o;
     ctx.strokeStyle = up ? getCss('--up') : getCss('--down');
     ctx.fillStyle   = up ? getCss('--up') : getCss('--down');
-    // тень
     const yH = yForPrice(k.h, rect, rng), yL = yForPrice(k.l, rect, rng);
-    ctx.beginPath();
-    ctx.moveTo(cx, yH); ctx.lineTo(cx, yL); ctx.stroke();
-    // тело
+    ctx.beginPath(); ctx.moveTo(cx, yH); ctx.lineTo(cx, yL); ctx.stroke();
     const yO = yForPrice(k.o, rect, rng), yC = yForPrice(k.c, rect, rng);
     const top = Math.min(yO, yC), h = Math.max(1, Math.abs(yC - yO));
-    if (bw >= 2) { ctx.fillRect(cx - bw/2, top, bw, h); }
-    else { ctx.fillRect(cx, top, 1, h); }
+    if (bw >= 2) ctx.fillRect(cx - bw/2, top, bw, h);
+    else ctx.fillRect(cx, top, 1, h);
   }
 
-  // линия текущей цены + метка
   const last = visible.at(-1);
   const lastY = yForPrice(last.c, rect, rng);
   ctx.save();
-  ctx.strokeStyle = getCss('--accent');
-  ctx.setLineDash([4,4]);
+  ctx.strokeStyle = getCss('--accent'); ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.moveTo(rect.x, lastY); ctx.lineTo(rect.x + rect.w, lastY); ctx.stroke();
   ctx.restore();
-  // ценовая метка справа
   drawPriceTag(lastY, last.c, rect);
 
-  // подпись тикера и ТФ
-  ctx.fillStyle = getCss('--muted');
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(`${state.ticker} · ${TF_BY_KEY[state.tfKey].label}`, rect.x + 6, rect.y + 14);
+  ctx.fillStyle = getCss('--muted'); ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(state.ticker + ' · ' + TF_BY_KEY[state.tfKey].label, rect.x + 6, rect.y + 14);
 
-  // перекрестие
-  if (hover.active) drawCrosshair(rect, rng, hover.x, hover.y, s, e);
+  if (hover.active) drawCrosshair(rect, rng, hover.x, hover.y);
 }
-
-function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888'; }
 
 function drawGrid(rect, rng, visible){
   ctx.save();
-  ctx.strokeStyle = getCss('--grid');
-  ctx.fillStyle = getCss('--muted');
-  ctx.lineWidth = 1;
-  ctx.font = '10px sans-serif';
-  // горизонтали (цены)
-  const steps = 5;
-  ctx.textAlign = 'left';
+  ctx.strokeStyle = getCss('--grid'); ctx.fillStyle = getCss('--muted');
+  ctx.lineWidth = 1; ctx.font = '10px sans-serif';
+  const steps = 5; ctx.textAlign = 'left';
   for (let i = 0; i <= steps; i++) {
     const p = rng.min + (rng.max - rng.min) * (i / steps);
     const y = yForPrice(p, rect, rng);
     ctx.beginPath(); ctx.moveTo(rect.x, y); ctx.lineTo(rect.x + rect.w, y); ctx.stroke();
     ctx.fillText(fmtNum(p), rect.x + rect.w + 6, y + 3);
   }
-  // вертикали (время)
   const n = visible.length;
   const target = Math.min(6, n);
   ctx.textAlign = 'center';
@@ -500,103 +470,69 @@ function drawGrid(rect, rng, visible){
     ctx.beginPath(); ctx.moveTo(x, rect.y); ctx.lineTo(x, rect.y + rect.h); ctx.stroke();
     const d = new Date(k.t);
     const label = (state.tfKey === '1d' || state.tfKey === '1w' || state.tfKey === '1M')
-      ? `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}`
+      ? pad2(d.getDate()) + '.' + pad2(d.getMonth()+1)
       : fmtDate(k.t);
     ctx.fillText(label, x, rect.y + rect.h + 14);
   }
   ctx.restore();
 }
-
 function drawPriceTag(y, price, rect){
   ctx.save();
   ctx.fillStyle = getCss('--accent');
   const x = rect.x + rect.w;
   ctx.fillRect(x, y - 9, LAYOUT.right - 6, 18);
   ctx.fillStyle = '#111';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'left';
+  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(fmtNum(price), x + 4, y + 4);
+  ctx.restore();
+}
+function drawCrosshair(rect, rng, x, y){
+  if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(215,221,229,.45)'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(x, rect.y); ctx.lineTo(x, rect.y + rect.h); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rect.x, y); ctx.lineTo(rect.x + rect.w, y); ctx.stroke();
+  ctx.restore();
+  const p = priceForY(y, rect, rng);
+  ctx.save();
+  ctx.fillStyle = '#2a323d';
+  ctx.fillRect(rect.x + rect.w, y - 9, LAYOUT.right - 6, 18);
+  ctx.fillStyle = getCss('--text'); ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(fmtNum(p), rect.x + rect.w + 4, y + 4);
   ctx.restore();
 }
 
 /* ---------- 11. Перекрестие ---------- */
-const hover = {active:false, x:0, y:0, index:-1, candle:null};
-cv.addEventListener('mousemove', e => {
-  const r = cv.getBoundingClientRect();
-  hover.active = true;
-  hover.x = e.clientX - r.left;
-  hover.y = e.clientY - r.top;
-  updateHoverCandle();
-  draw();
-});
-cv.addEventListener('mouseleave', () => { hover.active = false; $('#ohlc').style.display = 'none'; draw(); });
-cv.addEventListener('touchstart', e => {
-  if (e.touches.length === 1) {
-    const r = cv.getBoundingClientRect();
-    hover.active = true;
-    hover.x = e.touches.at(0).clientX - r.left;
-    hover.y = e.touches.at(0).clientY - r.top;
-    updateHoverCandle();
-    draw();
-  }
-}, {passive:true});
-cv.addEventListener('touchmove', e => {
-  if (e.touches.length === 1) {
-    const r = cv.getBoundingClientRect();
-    hover.x = e.touches.at(0).clientX - r.left;
-    hover.y = e.touches.at(0).clientY - r.top;
-    updateHoverCandle();
-    draw();
-  }
-}, {passive:true});
-cv.addEventListener('touchend', () => { hover.active = false; $('#ohlc').style.display='none'; draw(); }, {passive:true});
-
+const hover = {active:false, x:0, y:0};
 function updateHoverCandle(){
   const rect = plotRect();
   if (hover.x < rect.x || hover.x > rect.x + rect.w || hover.y < rect.y || hover.y > rect.y + rect.h) {
-    hover.index = -1; hover.candle = null; $('#ohlc').style.display = 'none';
-    return;
+    $('#ohlc').style.display = 'none'; return;
   }
   const n = state.view.end - state.view.start;
   if (n <= 0) return;
   const rel = (hover.x - rect.x) / rect.w;
   const idx = Math.round(rel * n) + state.view.start;
   const c = state.candles;
-  if (idx < 0 || idx >= c.length) { hover.index = -1; hover.candle = null; $('#ohlc').style.display='none'; return; }
-  hover.index = idx;
-  hover.candle = c.at(idx);
-  showOhlc(hover.candle);
+  if (idx < 0 || idx >= c.length) { $('#ohlc').style.display = 'none'; return; }
+  showOhlc(c.at(idx));
 }
 function showOhlc(k){
   const el = $('#ohlc');
   const d = new Date(k.t);
-  const dt = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  const up = k.c >= k.o;
-  const color = up ? getCss('--up') : getCss('--down');
-  el.innerHTML =
-    `<span>${dt}</span>  <b style="color:${color}">O ${fmtNum(k.o)} H ${fmtNum(k.h)} L ${fmtNum(k.l)} C ${fmtNum(k.c)}</b>  <span>V ${Math.round(k.v).toLocaleString('ru-RU')}</span>`;
+  const dt = pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+  const color = k.c >= k.o ? getCss('--up') : getCss('--down');
+  el.innerHTML = '<span>' + dt + '</span>  <b style="color:' + color + '">O ' + fmtNum(k.o) +
+    ' H ' + fmtNum(k.h) + ' L ' + fmtNum(k.l) + ' C ' + fmtNum(k.c) + '</b>  <span>V ' +
+    Math.round(k.v).toLocaleString('ru-RU') + '</span>';
   el.style.display = 'block';
 }
-
-function drawCrosshair(rect, rng, x, y, s, e){
-  if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) return;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(215,221,229,.45)';
-  ctx.setLineDash([3,3]);
-  ctx.beginPath(); ctx.moveTo(x, rect.y); ctx.lineTo(x, rect.y + rect.h); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(rect.x, y); ctx.lineTo(rect.x + rect.w, y); ctx.stroke();
-  ctx.restore();
-  // метка цены на шкале
-  const p = priceForY(y, rect, rng);
-  ctx.save();
-  ctx.fillStyle = '#2a323d';
-  ctx.fillRect(rect.x + rect.w, y - 9, LAYOUT.right - 6, 18);
-  ctx.fillStyle = getCss('--text');
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(fmtNum(p), rect.x + rect.w + 4, y + 4);
-  ctx.restore();
-}
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect();
+  hover.active = true; hover.x = e.clientX - r.left; hover.y = e.clientY - r.top;
+  updateHoverCandle(); draw();
+});
+cv.addEventListener('mouseleave', () => { hover.active = false; $('#ohlc').style.display='none'; draw(); });
 
 /* ---------- 12. Зум и панорама ---------- */
 function zoomAt(factor, clientX){
@@ -625,7 +561,6 @@ cv.addEventListener('wheel', e => {
   zoomAt(factor, e.clientX - r.left);
 }, {passive:false});
 
-// Перетаскивание мышью
 let drag = null;
 cv.addEventListener('mousedown', e => {
   drag = {x:e.clientX, start:state.view.start, end:state.view.end};
@@ -637,32 +572,47 @@ window.addEventListener('mousemove', e => {
   const n = drag.end - drag.start;
   if (n <= 0) return;
   const shift = Math.round((dx / rect.w) * n);
-  let ns = drag.start - shift;
-  let ne = drag.end - shift;
+  let ns = drag.start - shift, ne = drag.end - shift;
   const c = state.candles;
   if (ns < 0) { ne -= ns; ns = 0; }
   if (ne > c.length - 1) { ns -= (ne - (c.length - 1)); ne = c.length - 1; }
   if (ns < 0) ns = 0;
-  state.view.start = ns;
-  state.view.end = ne;
+  state.view.start = ns; state.view.end = ne;
   draw();
 });
 window.addEventListener('mouseup', () => { drag = null; });
 
-// Тач-панорама (1 палец) — по горизонтали
+/* ---------- 13. Тач: панорама + пинч ---------- */
 let touchDrag = null;
-cv.addEventListener('touchstart', e => {
-  if (e.touches.length === 1) {
-    const r = cv.getBoundingClientRect();
-    touchDrag = {
-      x: e.touches.at(0).clientX - r.left,
-      start: state.view.start, end: state.view.end
-    };
-  } else if (e.touches.length === 2) {
-    // пинч-зум
-    const t1 = e.touches.at(0), t2 = e.touches.at(1);
-    pinch = {d: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)};
-  }
-}, {passive:false});
-let pinch =
+let pinch = null;
 
+function touchDist(t1, t2){
+  return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+}
+cv.addEventListener('touchstart', e => {
+  const r = cv.getBoundingClientRect();
+  if (e.touches.length === 1) {
+    const t0 = e.touches.at(0);
+    touchDrag = {x: t0.clientX - r.left, start: state.view.start, end: state.view.end};
+    hover.active = true;
+    hover.x = t0.clientX - r.left;
+    hover.y = t0.clientY - r.top;
+    updateHoverCandle();
+    draw();
+  } else if (e.touches.length === 2) {
+    pinch = {d: touchDist(e.touches.at(0), e.touches.at(1)), n: state.view.end - state.view.start,
+             mid: (e.touches.at(0).clientX + e.touches.at(1).clientX) / 2 - r.left,
+             start: state.view.start, end: state.view.end};
+    touchDrag = null;
+  }
+}, {passive:true});
+
+cv.addEventListener('touchmove', e => {
+  const r = cv.getBoundingClientRect();
+  if (e.touches.length === 1 && touchDrag) {
+    const dx = (e.touches.at(0).clientX - r.left) - touchDrag.x;
+    const rect = plotRect();
+    const n = touchDrag.end - touchDrag.start;
+    if (n <= 0) return;
+    const shift = Math.round((dx / rect.w) * n);
+    let ns = touchDrag.start - shift
