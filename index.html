@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MOEX Terminal</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#131722" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+    header { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; background: #1e222d; border-bottom: 1px solid #2a2e39; align-items: center; }
+    .ticker-box { display: flex; gap: 4px; align-items: center; }
+    input, button { background: #2a2e39; color: #fff; border: 1px solid #363a45; padding: 6px 9px; border-radius: 4px; font-size: 13px; }
+    input:focus { outline: none; border-color: #2962ff; }
+    button { cursor: pointer; white-space: nowrap; }
+    button:hover { background: #363a45; }
+    button.active { background: #2962ff; border-color: #2962ff; font-weight: 600; }
+    #tf-buttons { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; max-width: 100%; }
+    #status { font-size: 12px; color: #787b86; margin-left: auto; }
+    #chart { flex: 1; width: 100%; position: relative; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="ticker-box">
+      <input id="ticker-input" list="moex-tickers" value="SBER" placeholder="Поиск тикера..." style="width: 170px;" />
+      <datalist id="moex-tickers"></datalist>
+      <button id="load-btn">Открыть</button>
+    </div>
+
+    <div id="tf-buttons">
+      <button data-tf="1m">1м</button>
+      <button data-tf="2m">2м</button>
+      <button data-tf="3m">3м</button>
+      <button data-tf="5m">5м</button>
+      <button data-tf="10m">10м</button>
+      <button data-tf="15m" class="active">15м</button>
+      <button data-tf="30m">30м</button>
+      <button data-tf="1h">1ч</button>
+      <button data-tf="2h">2ч</button>
+      <button data-tf="4h">4ч</button>
+      <button data-tf="1D">1Д</button>
+      <button data-tf="1W">1Н</button>
+      <button data-tf="1M">1М</button>
+    </div>
+
+    <div id="status">Загрузка...</div>
+  </header>
+
+  <div id="chart"></div>
+
+  <script type="module">
+    import { createChart } from 'https://esm.sh';
+    import { fetchAllMoexTickers, fetchMoexCandles } from './moexDatafeed.js';
+
+    let currentTicker = 'SBER';
+    let currentTf = '15m';
+    let timerId = null;
+
+    const statusEl = document.getElementById('status');
+    const tickerInput = document.getElementById('ticker-input');
+    const datalistEl = document.getElementById('moex-tickers');
+
+    // Создаем график
+    const chart = createChart(document.getElementById('chart'), {
+      layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+      grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+      crosshair: { mode: 0 },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a2e39' },
+      rightPriceScale: { borderColor: '#2a2e39' },
+      autoSize: true
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a', downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+    });
+
+    // Подгружаем все тикеры MOEX в выпадающий поиск
+    async function initTickers() {
+      const tickers = await fetchAllMoexTickers();
+      datalistEl.innerHTML = tickers
+        .map(t => `<option value="${t.secid}">${t.name}</option>`)
+        .join('');
+    }
+
+    // Обновление свечей
+    async function updateChart(fitContent = false) {
+      statusEl.textContent = `Загрузка ${currentTicker} (${currentTf})...`;
+      try {
+        const candles = await fetchMoexCandles(currentTicker, currentTf);
+        if (!candles.length) {
+          statusEl.textContent = `Нет данных по тикеру ${currentTicker}`;
+          return;
+        }
+        candleSeries.setData(candles);
+        if (fitContent) chart.timeScale().fitContent();
+
+        const last = candles[candles.length - 1];
+        const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        statusEl.textContent = `${currentTicker}: ${last.close} ₽ (${now})`;
+      } catch (e) {
+        statusEl.textContent = 'Ошибка сети MOEX';
+      }
+    }
+
+    function selectTickerAndStart(rawVal) {
+      // Берем только сам тикер до пробела (на случай если выбрано из подсказки)
+      const clean = rawVal.trim().split(' ')[0].toUpperCase();
+      if (!clean) return;
+      currentTicker = clean;
+      tickerInput.value = clean;
+      if (timerId) clearInterval(timerId);
+      updateChart(true);
+      timerId = setInterval(() => updateChart(false), 12000);
+    }
+
+    // События поиска и выбора тикера
+    document.getElementById('load-btn').addEventListener('click', () => selectTickerAndStart(tickerInput.value));
+    tickerInput.addEventListener('change', () => selectTickerAndStart(tickerInput.value));
+    tickerInput.addEventListener('focus', () => tickerInput.select());
+
+    // Переключение таймфреймов
+    document.getElementById('tf-buttons').addEventListener('click', (e) => {
+      const tf = e.target.dataset.tf;
+      if (!tf) return;
+      document.querySelectorAll('#tf-buttons button').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      currentTf = tf;
+      if (timerId) clearInterval(timerId);
+      updateChart(true);
+      timerId = setInterval(() => updateChart(false), 12000);
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+
+    initTickers();
+    selectTickerAndStart('SBER');
+  </script>
+</body>
+</html>
