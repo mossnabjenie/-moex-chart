@@ -73,6 +73,15 @@ var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.c
 
 var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE']];
 
+/* Автоматические значения длины Darvas Box по тикеру (для 10м) */
+var DB_DEFAULTS={
+VKCO:24,
+AFKS:30,
+X5:33,
+FIVE:33,
+OZON:39
+};
+
 var TF_LIST=[
 {key:'10m',label:'10м',iss:10,agg:1},
 {key:'15m',label:'15м',iss:1,agg:15},
@@ -110,6 +119,22 @@ function fmtHm(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMi
 function priorityRank(sec){
 for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;}
 return 1000;
+}
+
+/* Возвращает длину бокса для тикера:
+   1) ручная настройка пользователя для этого тикера (localStorage)
+   2) дефолт из DB_DEFAULTS
+   3) 10 (общий дефолт) */
+function getBoxpForTicker(ticker){
+try{
+var stored=localStorage.getItem('db_boxp_'+ticker);
+if(stored){
+var n=parseInt(stored,10);
+if(n>=2&&n<=200)return n;
+}
+}catch(e){}
+if(DB_DEFAULTS[ticker])return DB_DEFAULTS[ticker];
+return 10;
 }
 
 function fmtCountdown(ms){
@@ -357,13 +382,15 @@ else{state.db.boxes=[];}
 draw();
 });
 
-/* Инлайн-поле длины бокса */
+/* Инлайн-поле длины бокса — сохраняется ПЕРСОНАЛЬНО для текущего тикера */
 $('#db-len-inline').addEventListener('change',function(e){
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
 e.target.value=v;
 state.db.boxp=v;
-saveDbSettings();
+try{
+localStorage.setItem('db_boxp_'+state.ticker, String(v));
+}catch(err){}
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
@@ -372,16 +399,13 @@ draw();
 function saveDbSettings(){
 try{
 localStorage.setItem('db_enabled',state.db.enabled?'1':'0');
-localStorage.setItem('db_boxp',String(state.db.boxp));
 }catch(e){}
 }
 function loadDbSettings(){
 try{
 if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;
-var v=localStorage.getItem('db_boxp');if(v){var n=parseInt(v,10);if(n>=2&&n<=200)state.db.boxp=n;}
 }catch(e){}
 $('#btn-db').classList.toggle('active',state.db.enabled);
-$('#db-len-inline').value=state.db.boxp;
 }
 
 function setStatus(html,isErr){
@@ -449,6 +473,12 @@ state.candles=aggregate(merged,tf.agg);
 
 function reloadChart(){
 if(state.loading)return;
+
+/* АВТОВЫСТАВЛЕНИЕ длины Darvas для выбранного тикера.
+   Приоритет: ручная настройка (localStorage) > дефолт для тикера > 10. */
+state.db.boxp=getBoxpForTicker(state.ticker);
+$('#db-len-inline').value=state.db.boxp;
+
 state.loading=true;
 state.err='';
 $('#loading').classList.remove('hide');
@@ -515,7 +545,7 @@ var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
-/* paddingRight уменьшен со 150 до 40 (~1 см) — больше нет "чёрной пустоты" между свечами и шкалой цен */
+/* paddingRight=40 (~1 см) — больше нет "чёрной пустоты" между свечами и шкалой цен */
 var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:40};
 
 function resize(){
