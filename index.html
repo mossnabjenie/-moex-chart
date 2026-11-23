@@ -278,15 +278,9 @@ if(n===0)return ema;
 var k=2/(period+1);
 var sum=0;
 for(var i=0;i<n;i++){
-if(i<period-1){
-ema[i]=null;
-sum+=values[i];
-}else if(i===period-1){
-sum+=values[i];
-ema[i]=sum/period;
-}else{
-ema[i]=values[i]*k+ema[i-1]*(1-k);
-}
+if(i<period-1){ema[i]=null;sum+=values[i];}
+else if(i===period-1){sum+=values[i];ema[i]=sum/period;}
+else{ema[i]=values[i]*k+ema[i-1]*(1-k);}
 }
 return ema;
 }
@@ -541,7 +535,6 @@ state.candles=aggregate(raw,tf.agg);
 var n=state.candles.length;
 state.view.end=n-1;
 state.view.start=Math.max(0,n-Math.min(120,n));
-// сброс вертикального зума при смене тикера/ТФ
 state.manualPx=false;
 state.viewPx={min:0,max:0};
 state.lastUpdate=Date.now();
@@ -586,12 +579,10 @@ refreshStatus();
 });
 }
 
-/* CANVAS */
 var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
-
 var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:150};
 
 function resize(){
@@ -614,7 +605,6 @@ function priceAxisX(rect){return rect.x + rect.w + LAYOUT.paddingRight;}
 function priceRange(){
 var c=state.candles;
 if(!c.length)return {min:0,max:1};
-// если включён вертикальный зум — возвращаем ручной диапазон
 if(state.manualPx && state.viewPx.max > state.viewPx.min){
 return {min: state.viewPx.min, max: state.viewPx.max};
 }
@@ -848,8 +838,6 @@ cv.addEventListener('mouseleave',function(){
 hover.active=false;$('#ohlc').style.display='none';draw();
 });
 
-/* ============ ЗУМ ============ */
-// Горизонтальный: анкор вправо (state.view.end), тянем только влево
 function zoomHorizontalRight(factor){
 var c=state.candles;
 if(!c.length)return;
@@ -865,7 +853,6 @@ state.view.end=ne;
 draw();
 }
 
-// Вертикальный: анкор к позиции мыши на шкале
 function zoomVertical(factor, mouseY){
 var c=state.candles;
 if(!c.length)return;
@@ -898,7 +885,6 @@ zoomHorizontalRight(factor);
 }
 },{passive:false});
 
-// Двойной клик по шкале цен — сброс вертикального зума
 cv.addEventListener('dblclick',function(e){
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
@@ -916,7 +902,7 @@ cv.addEventListener('mousedown',function(e){
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
 var rect=plotRect();
-if(mx<rect.x||mx>rect.x+rect.w)return; // не тянем за шкалу цен
+if(mx<rect.x||mx>rect.x+rect.w)return;
 drag={x:e.clientX,start:state.view.start,end:state.view.end};
 });
 window.addEventListener('mousemove',function(e){
