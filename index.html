@@ -42,7 +42,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <header>
 <div class="row">
 <select id="ticker" title="Тикер"></select>
-<input id="search" placeholder="поиск: VKCO / SBER" autocomplete="off">
+<input id="search" placeholder="поиск: SMLT / VKCO" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
 <button id="btn-db" class="btn-db-main" title="Вкл/выкл Darvas Box">📦 Darvas</button>
@@ -71,7 +71,8 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
-var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE']];
+/* --- ДОБАВЛЕН SMLT (Самолёт) пятым --- */
+var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
 
 /* Автоматические значения длины Darvas Box по тикеру (для 10м) */
 var DB_DEFAULTS={
@@ -79,7 +80,8 @@ VKCO:24,
 AFKS:30,
 X5:33,
 FIVE:33,
-OZON:39
+OZON:39,
+SMLT:40 // Добавлено: Самолёт = 40
 };
 
 var TF_LIST=[
@@ -680,9 +682,9 @@ var lastIdx=e;
 var last=c[lastIdx];
 var lastY=yForPrice(last.c,rect,rng);
 var axisX=priceAxisX(rect);
-/* Пунктирная линия текущей цены — БЕЛАЯ */
-ctx.save();ctx.strokeStyle='#ffffff';ctx.setLineDash([4,4]);
-ctx.beginPath();ctx.moveTo(rect.x,lastY);ctx.lineTo(axisX,lastY);ctx.stroke();ctx.restore();
+
+/* УБРАНА белая пунктирная линия текущей цены.
+   Остаётся только ценник (price tag) на правой оси. */
 drawPriceTag(lastY,last.c,rect);
 
 ctx.font='12px sans-serif';ctx.textAlign='left';
