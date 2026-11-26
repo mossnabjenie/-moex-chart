@@ -41,6 +41,22 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .color-btn.active{border-color:#fff !important;box-shadow:0 0 0 2px #000 inset}
 .draw-hint{color:var(--muted);font-size:11px;font-style:italic;margin-left:8px}
 #darvas-hint{position:absolute;bottom:28px;right:12px;font-size:10px;color:var(--muted);background:rgba(8,10,14,.78);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:2;white-space:nowrap}
+/* ===== Бэктест: модальное окно ===== */
+#bt-modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow:auto}
+#bt-modal.show{display:flex}
+#bt-content{background:var(--panel);border:1px solid #2a323d;border-radius:8px;padding:16px;max-width:1000px;width:100%;max-height:calc(100vh - 40px);overflow:auto}
+.bt-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.bt-row label{min-width:auto;color:var(--muted);font-size:12px}
+.bt-row input,.bt-row select{padding:4px 6px;font-size:12px;background:#0b0f14;color:var(--text);border:1px solid #2a323d;border-radius:6px}
+#bt-results{margin-top:16px;font-size:12px}
+.bt-table{width:100%;border-collapse:collapse;margin-top:8px}
+.bt-table th,.bt-table td{padding:5px 8px;border-bottom:1px solid #1c2230}
+.bt-table th{color:var(--muted);text-align:right;font-weight:normal;background:#0a0f16}
+.bt-table td{text-align:right;font-variant-numeric:tabular-nums}
+.bt-table th.left,.bt-table td.left{text-align:left}
+.bt-table code{font-size:10px;color:var(--accent)}
+.bt-pos{color:#26a69a}
+.bt-neg{color:#ef5350}
 </style>
 </head>
 <body>
@@ -71,6 +87,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <span style="color:var(--muted);font-size:11px">EMA</span>
     <input type="number" id="ema20-inline" min="1" max="1000" value="20" title="Период EMA (белая)" style="width:58px;text-align:center">
     <input type="number" id="ema200-inline" min="1" max="1000" value="200" title="Период EMA (голубая)" style="width:58px;text-align:center">
+    <button class="draw-btn" id="btn-backtest" title="Бэктест на загруженных свечах">🧪 Бэктест</button>
   </div>
   <span class="draw-hint">ЛКМ: точка 1 → точка 2. ПКМ: вкл/выкл режим «Линия». Выделенная линия → тяни её концы. Delete: удалить.</span>
 </div>
@@ -81,6 +98,36 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40</div>
 <div id="loading">Загрузка графика…</div>
 </div>
+</div>
+
+<!-- ===== Модальное окно бэктеста ===== -->
+<div id="bt-modal">
+  <div id="bt-content">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0;font-size:16px">🧪 Бэктест (walk-forward 60/20/20)</h2>
+      <button id="bt-close" style="font-size:16px;padding:2px 8px">✕</button>
+    </div>
+    <div class="bt-row">
+      <label>Стратегия:</label>
+      <select id="bt-strategy">
+        <option value="donchian">Donchian Breakout + ATR trail</option>
+        <option value="ema-trend">EMA trend + ATR trail</option>
+        <option value="vol-spike">Volume-spike + ATR trail</option>
+      </select>
+    </div>
+    <div class="bt-row">
+      <label>Комиссия, %:</label>
+      <input type="number" id="bt-comm" value="0.04" step="0.01" min="0" style="width:80px">
+      <label>Проскальзывание, %:</label>
+      <input type="number" id="bt-slip" value="0.04" step="0.01" min="0" style="width:80px">
+      <label style="color:var(--muted);font-size:11px">(Long + Short, оба учитываются)</label>
+    </div>
+    <div class="bt-row" style="margin-top:8px">
+      <button class="draw-btn active" id="bt-run">▶ Запустить walk-forward</button>
+      <button class="draw-btn" id="bt-clear-marks">Убрать метки с графика</button>
+    </div>
+    <div id="bt-results"><p style="color:var(--muted)">Нажми «Запустить walk-forward». Данные берутся из уже загруженных свечей (state.candles).</p></div>
+  </div>
 </div>
 
 <script>
@@ -99,7 +146,6 @@ var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.c
 
 var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
 
-/* ЖЁСТКАЯ ТАБЛИЦА Darvas — главный источник значений для этих тикеров */
 var DB_DEFAULTS={
 VKCO:24,
 AFKS:30,
@@ -122,12 +168,12 @@ var TF_LIST=[
 ];
 var TF_BY_KEY={};TF_LIST.forEach(function(t){TF_BY_KEY[t.key]=t;});
 var REFRESH_MS=12000;
-var MAX_CANDLES=4000;         /* ← A: уменьшено с 10000 → 4000 */
-var TAIL_CANDLES=800;          /* ← B: первая быстрая порция свечей для мгновенного рендера */
+var MAX_CANDLES=4000;
+var TAIL_CANDLES=800;
 var PAGE_SIZE=500;
-var PARALLEL_BATCH=4;          /* ← E: сколько страниц тянем параллельно */
-var MEM_CACHE_MAX=8;           /* ← C: сколько пар тикер|ТФ держим в памяти */
-var MEM_CACHE_FRESH_MS=300000; /* 5 минут — если кэш свежее, фон только хвост */
+var PARALLEL_BATCH=4;
+var MEM_CACHE_MAX=8;
+var MEM_CACHE_FRESH_MS=300000;
 var MSK_OFFSET=3*3600*1000;
 var END_HOUR_MSK=23,END_MIN_MSK=50;
 
@@ -151,15 +197,11 @@ for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)
 return 1000;
 }
 
-/* Жёсткая привязка: DB_DEFAULTS > localStorage > 10 */
 function getBoxpForTicker(ticker){
 if(DB_DEFAULTS[ticker]) return DB_DEFAULTS[ticker];
 try{
 var stored=localStorage.getItem('db_boxp_'+ticker);
-if(stored){
-var n=parseInt(stored,10);
-if(n>=2&&n<=200)return n;
-}
+if(stored){var n=parseInt(stored,10);if(n>=2&&n<=200)return n;}
 }catch(e){}
 return 10;
 }
@@ -211,7 +253,6 @@ if(tf.iss===31)return 1/22;
 return 480/(tf.iss*(tf.agg||1));
 }
 
-/* === E: Параллельная загрузка страниц (батчами по PARALLEL_BATCH) === */
 function fetchRangeReverse(ticker, tf, fromStr, tillStr, maxRows){
 var all=[];
 function fetchPage(start){
@@ -234,7 +275,6 @@ out.push({t:ts,o:+r.at(iO),c:+r.at(iC),h:+r.at(iH),l:+r.at(iL),v:+r.at(iV)||0});
 }
 return out;
 }
-/* Первый запрос — один, чтобы быстро оценить наличие данных */
 return fetchPage(0).then(function(firstPage){
 var parsed=parsePage(firstPage);
 for(var i=0;i<parsed.length;i++)all.push(parsed[i]);
@@ -378,23 +418,17 @@ ticker:'VKCO',tfKey:'10m',candles:[],rawIss:[],ema20:[],ema200:[],
 ema20p:20,ema200p:200,
 view:{start:0,end:0},viewPx:{min:0,max:0},manualPx:false,
 loading:false,bgLoading:false,lastUpdate:0,err:'',
-db:{enabled:false,boxp:10,thickness:1,boxes:[]}
+db:{enabled:false,boxp:10,thickness:1,boxes:[]},
+backtestMarks:[]
 };
 var securities=[];
 var refreshTimer=null;
 var loadGen=0;
-
-/* === C: кэш в памяти для связки тикер|ТФ === */
 var memCache={};
 
 function updateMemCache(){
 var key=state.ticker+'|'+state.tfKey;
-memCache[key]={
-rawIss: state.rawIss,
-candles: state.candles,
-lastUpdate: state.lastUpdate
-};
-/* LRU-обрезка */
+memCache[key]={rawIss:state.rawIss,candles:state.candles,lastUpdate:state.lastUpdate};
 var keys=Object.keys(memCache);
 if(keys.length>MEM_CACHE_MAX){
 keys.sort(function(a,b){return memCache[a].lastUpdate - memCache[b].lastUpdate;});
@@ -403,66 +437,39 @@ for(var i=0;i<keys.length-MEM_CACHE_MAX;i++)delete memCache[keys[i]];
 }
 
 /* ========== РИСОВАНИЕ ЛИНИЙ ========== */
-var drawState={
-mode:null,
-color:'#ffeb3b',
-pendingPoint:null,
-selectedId:null,
-draggingPoint:null,
-nextId:1
-};
-var lines=[]; /* {id, i1, p1, t1, i2, p2, t2, color} */
+var drawState={mode:null,color:'#ffeb3b',pendingPoint:null,selectedId:null,draggingPoint:null,nextId:1};
+var lines=[];
 
 function linesStorageKey(ticker){return 'moex_lines_v2_'+ticker;}
-
 function nearestCandleTime(i){
-var c=state.candles;
-if(!c||!c.length)return null;
-var idx=Math.round(i);
-if(idx<0)idx=0;
-if(idx>c.length-1)idx=c.length-1;
+var c=state.candles;if(!c||!c.length)return null;
+var idx=Math.round(i);if(idx<0)idx=0;if(idx>c.length-1)idx=c.length-1;
 return c[idx].t;
 }
-
 function timeToIndex(t){
-var c=state.candles;
-if(!c||!c.length)return null;
+var c=state.candles;if(!c||!c.length)return null;
 if(!isFinite(t))return null;
 if(t<=c[0].t)return 0;
 if(t>=c[c.length-1].t)return c.length-1;
 var lo=0,hi=c.length-1;
-while(lo<=hi){
-var mid=(lo+hi)>>1;
-if(c[mid].t===t)return mid;
-if(c[mid].t<t)lo=mid+1;else hi=mid-1;
-}
+while(lo<=hi){var mid=(lo+hi)>>1;if(c[mid].t===t)return mid;if(c[mid].t<t)lo=mid+1;else hi=mid-1;}
 var a=Math.max(0,lo-1),b=Math.min(c.length-1,lo);
 return (Math.abs(c[a].t-t)<=Math.abs(c[b].t-t))?a:b;
 }
-
-/* Пересчитать i1/i2 у всех линий по сохранённым t1/t2 — после подмены массива свечей */
 function remapLines(){
 for(var i=0;i<lines.length;i++){
 var ln=lines[i];
-if(ln.t1!=null){
-var ni=timeToIndex(ln.t1);
-if(ni!=null)ln.i1=ni;
-}
-if(ln.t2!=null){
-var nj=timeToIndex(ln.t2);
-if(nj!=null)ln.i2=nj;
+if(ln.t1!=null){var ni=timeToIndex(ln.t1);if(ni!=null)ln.i1=ni;}
+if(ln.t2!=null){var nj=timeToIndex(ln.t2);if(nj!=null)ln.i2=nj;}
 }
 }
-}
-
 function saveLines(){
 try{
 if(!state.candles.length)return;
 var arr=[];
 for(var i=0;i<lines.length;i++){
 var ln=lines[i];
-var t1=nearestCandleTime(ln.i1);
-var t2=nearestCandleTime(ln.i2);
+var t1=nearestCandleTime(ln.i1);var t2=nearestCandleTime(ln.i2);
 if(t1==null||t2==null)continue;
 ln.t1=t1;ln.t2=t2;
 arr.push({t1:t1,p1:ln.p1,t2:t2,p2:ln.p2,color:ln.color});
@@ -470,44 +477,29 @@ arr.push({t1:t1,p1:ln.p1,t2:t2,p2:ln.p2,color:ln.color});
 localStorage.setItem(linesStorageKey(state.ticker),JSON.stringify(arr));
 }catch(e){}
 }
-
 function loadLinesForTicker(ticker){
-lines=[];
-drawState.selectedId=null;
-drawState.pendingPoint=null;
-drawState.draggingPoint=null;
+lines=[];drawState.selectedId=null;drawState.pendingPoint=null;drawState.draggingPoint=null;
 try{
 var raw=localStorage.getItem(linesStorageKey(ticker));
 if(!raw)return;
-var arr=JSON.parse(raw);
-if(!Array.isArray(arr))return;
+var arr=JSON.parse(raw);if(!Array.isArray(arr))return;
 for(var i=0;i<arr.length;i++){
-var it=arr[i];
-if(!it)continue;
-var i1=timeToIndex(it.t1);
-var i2=timeToIndex(it.t2);
+var it=arr[i];if(!it)continue;
+var i1=timeToIndex(it.t1);var i2=timeToIndex(it.t2);
 if(i1==null||i2==null)continue;
-lines.push({
-id:drawState.nextId++,
-i1:i1,p1:it.p1,t1:it.t1,
-i2:i2,p2:it.p2,t2:it.t2,
-color:it.color||'#ffeb3b'
-});
+lines.push({id:drawState.nextId++,i1:i1,p1:it.p1,t1:it.t1,i2:i2,p2:it.p2,t2:it.t2,color:it.color||'#ffeb3b'});
 }
 }catch(e){}
 }
 
-function updateDrawUi(){
-$('#btn-draw-line').classList.toggle('active', drawState.mode === 'line');
-}
+function updateDrawUi(){$('#btn-draw-line').classList.toggle('active', drawState.mode === 'line');}
 
 function pxToData(px, py, rect, rng){
 var viewSpan = Math.max(1, state.view.end - state.view.start);
 var i = state.view.start + ((px - rect.x) / rect.w) * viewSpan;
 var p = priceForY(py, rect, rng);
-return {i: i, p: p};
+return {i:i,p:p};
 }
-
 function pointToSegmentDist(px, py, x1, y1, x2, y2){
 var dx = x2 - x1, dy = y2 - y1;
 var len2 = dx*dx + dy*dy;
@@ -516,7 +508,6 @@ var t = Math.max(0, Math.min(1, ((px - x1)*dx + (py - y1)*dy) / len2));
 var px2 = x1 + t*dx, py2 = y1 + t*dy;
 return Math.hypot(px - px2, py - py2);
 }
-
 function hitTestLine(px, py, rect, rng){
 var viewSpan = Math.max(1, state.view.end - state.view.start);
 for(var i=lines.length-1;i>=0;i--){
@@ -529,7 +520,6 @@ if(pointToSegmentDist(px, py, x1, y1, x2, y2) < 8) return ln;
 }
 return null;
 }
-
 function hitTestPoint(px, py, rect, rng){
 if(!drawState.selectedId) return null;
 var viewSpan = Math.max(1, state.view.end - state.view.start);
@@ -545,75 +535,45 @@ if(Math.hypot(px - x2, py - y2) < 9) return {line: ln, which: 2};
 }
 return null;
 }
-
 function drawLines(rect, rng){
 var viewStart = state.view.start;
 var viewSpan = Math.max(1, state.view.end - viewStart);
-
 for(var i=0;i<lines.length;i++){
 var ln = lines[i];
 var x1 = rect.x + (ln.i1 - viewStart) / viewSpan * rect.w;
 var y1 = yForPrice(ln.p1, rect, rng);
 var x2 = rect.x + (ln.i2 - viewStart) / viewSpan * rect.w;
 var y2 = yForPrice(ln.p2, rect, rng);
-
 var isSel = (ln.id === drawState.selectedId);
-
-ctx.save();
-ctx.strokeStyle = ln.color;
-ctx.lineWidth = isSel ? 3 : 2;
-ctx.beginPath();
-ctx.moveTo(x1, y1);
-ctx.lineTo(x2, y2);
-ctx.stroke();
-
+ctx.save();ctx.strokeStyle = ln.color;ctx.lineWidth = isSel ? 3 : 2;
+ctx.beginPath();ctx.moveTo(x1, y1);ctx.lineTo(x2, y2);ctx.stroke();
 if(isSel){
-ctx.fillStyle = ln.color;
-ctx.strokeStyle = '#000';
-ctx.lineWidth = 1;
+ctx.fillStyle = ln.color;ctx.strokeStyle = '#000';ctx.lineWidth = 1;
 ctx.beginPath();ctx.arc(x1, y1, 6, 0, Math.PI*2);ctx.fill();ctx.stroke();
 ctx.beginPath();ctx.arc(x2, y2, 6, 0, Math.PI*2);ctx.fill();ctx.stroke();
 }
 ctx.restore();
-
 if(isSel){
 if(y1>=rect.y && y1<=rect.y+rect.h) drawAxisTag(rect, y1, ln.p1, '#7d8694', '#0b0f14');
 if(y2>=rect.y && y2<=rect.y+rect.h) drawAxisTag(rect, y2, ln.p2, '#7d8694', '#0b0f14');
 }
 }
-
 if(drawState.mode === 'line' && drawState.pendingPoint && hover.active && hover.inPlot){
 var pp = drawState.pendingPoint;
 var x1 = rect.x + (pp.i - viewStart) / viewSpan * rect.w;
 var y1 = yForPrice(pp.p, rect, rng);
-
-ctx.save();
-ctx.strokeStyle = drawState.color;
-ctx.lineWidth = 2;
-ctx.setLineDash([5, 5]);
-ctx.beginPath();
-ctx.moveTo(x1, y1);
-ctx.lineTo(hover.x, hover.y);
-ctx.stroke();
-ctx.restore();
-
-ctx.save();
-ctx.fillStyle = drawState.color;
-ctx.beginPath();
-ctx.arc(x1, y1, 4, 0, Math.PI*2);
-ctx.fill();
-ctx.restore();
+ctx.save();ctx.strokeStyle = drawState.color;ctx.lineWidth = 2;ctx.setLineDash([5, 5]);
+ctx.beginPath();ctx.moveTo(x1, y1);ctx.lineTo(hover.x, hover.y);ctx.stroke();ctx.restore();
+ctx.save();ctx.fillStyle = drawState.color;
+ctx.beginPath();ctx.arc(x1, y1, 4, 0, Math.PI*2);ctx.fill();ctx.restore();
 }
 }
 
 function setupDrawUi(){
 $('#btn-draw-line').addEventListener('click', function(){
 drawState.mode = (drawState.mode === 'line') ? null : 'line';
-drawState.pendingPoint = null;
-updateDrawUi();
-draw();
+drawState.pendingPoint = null; updateDrawUi(); draw();
 });
-
 var cbtns = document.querySelectorAll('.color-btn');
 for(var i=0;i<cbtns.length;i++){
 cbtns[i].addEventListener('click', function(e){
@@ -623,30 +583,298 @@ e.target.classList.add('active');
 drawState.color = e.target.dataset.color;
 });
 }
-
 $('#btn-delete-line').addEventListener('click', function(){
 if(drawState.selectedId){
 lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
-drawState.selectedId = null;
-drawState.draggingPoint = null;
-saveLines();
-draw();
+drawState.selectedId = null; drawState.draggingPoint = null; saveLines(); draw();
 }
 });
-
 window.addEventListener('keydown', function(e){
 if(e.key !== 'Delete' && e.key !== 'Backspace') return;
 if(document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) return;
 if(!drawState.selectedId) return;
 lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
-drawState.selectedId = null;
-saveLines();
-draw();
-e.preventDefault();
+drawState.selectedId = null; saveLines(); draw(); e.preventDefault();
 });
 }
 
 /* ========== КОНЕЦ РИСОВАНИЯ ========== */
+
+/* ================== БЭКТЕСТ ================== */
+var BT_COMM = 0.0004; // 0.04%
+var BT_SLIP = 0.0004; // 0.04%
+
+function btATR(candles, period){
+var n = candles.length;
+var atr = new Array(n);
+for(var i=0;i<n;i++)atr[i]=null;
+if(n<period)return atr;
+var tr = new Array(n);
+for(var i=0;i<n;i++){
+if(i===0){tr[i]=candles[i].h-candles[i].l;continue;}
+var h=candles[i].h,l=candles[i].l,pc=candles[i-1].c;
+tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));
+}
+var sum=0;
+for(var i=0;i<period;i++)sum+=tr[i];
+atr[period-1]=sum/period;
+for(var i=period;i<n;i++){
+atr[i]=(atr[i-1]*(period-1)+tr[i])/period;
+}
+return atr;
+}
+
+function btDonchian(candles, N){
+var n=candles.length;
+var hh=new Array(n),ll=new Array(n);
+for(var i=0;i<n;i++){
+if(i<N){hh[i]=null;ll[i]=null;continue;}
+var mx=-Infinity,mn=Infinity;
+for(var j=i-N;j<i;j++){
+if(candles[j].h>mx)mx=candles[j].h;
+if(candles[j].l<mn)mn=candles[j].l;
+}
+hh[i]=mx;ll[i]=mn;
+}
+return {hh:hh,ll:ll};
+}
+
+function btVolMA(candles, N){
+var n=candles.length;
+var vma=new Array(n);
+for(var i=0;i<n;i++){
+if(i<N){vma[i]=null;continue;}
+var sum=0;for(var j=i-N;j<i;j++)sum+=candles[j].v;
+vma[i]=sum/N;
+}
+return vma;
+}
+
+function btRun(candles, startIdx, endIdx, params, strategyName){
+var trades=[];var marks=[];
+var atr=btATR(candles, params.atrPeriod||14);
+var donH=null,donL=null,emaF=null,emaS=null,volMA=null;
+if(strategyName==='donchian'||strategyName==='vol-spike'){
+var don=btDonchian(candles,params.N);
+donH=don.hh;donL=don.ll;
+if(strategyName==='vol-spike')volMA=btVolMA(candles,params.volN||20);
+}else if(strategyName==='ema-trend'){
+var closes=candles.map(function(c){return c.c;});
+emaF=computeEMA(closes,params.emaFast);
+emaS=computeEMA(closes,params.emaSlow);
+}
+
+var side=0,entryPrice=0,entryIdx=0,entryTs=0,highWater=0,lowWater=0;
+var entryDonH=0,entryDonL=0;
+
+function openPos(s,price,i){
+side=s;entryPrice=price;entryIdx=i;entryTs=candles[i].t;
+highWater=price;lowWater=price;
+marks.push({type:s>0?'long-entry':'short-entry',idx:i,price:price});
+}
+function closePos(price,i){
+var gross;
+if(side>0)gross=(price-entryPrice)/entryPrice;
+else gross=(entryPrice-price)/entryPrice;
+var net=gross-2*(BT_COMM+BT_SLIP);
+trades.push({side:side,entryIdx:entryIdx,entryTs:entryTs,entryPrice:entryPrice,exitIdx:i,exitTs:candles[i].t,exitPrice:price,gross:gross,net:net});
+marks.push({type:'exit',idx:i,price:price,side:side});
+side=0;
+}
+
+for(var i=startIdx;i<endIdx;i++){
+var bar=candles[i];
+var a=atr[i];
+if(a==null)continue;
+
+if(side===0){
+if(strategyName==='donchian'||strategyName==='vol-spike'){
+var allowLong = donH[i]!=null && bar.h>donH[i];
+var allowShort = donL[i]!=null && bar.l<donL[i];
+if(strategyName==='vol-spike' && volMA[i]!=null){
+if(!(bar.v > params.volMult*volMA[i])){allowLong=false;allowShort=false;}
+}
+if(allowLong){openPos(1,Math.max(donH[i],bar.o),i);}
+else if(allowShort){openPos(-1,Math.min(donL[i],bar.o),i);}
+}else if(strategyName==='ema-trend'){
+if(emaF[i]!=null && emaS[i]!=null){
+if(emaF[i]>emaS[i] && bar.c>emaF[i])openPos(1,bar.c,i);
+else if(emaF[i]<emaS[i] && bar.c<emaF[i])openPos(-1,bar.c,i);
+}
+}
+}
+
+if(side!==0){
+if(side>0){if(bar.h>highWater)highWater=bar.h;}
+else{if(bar.l<lowWater)lowWater=bar.l;}
+
+var exited=false;
+if(side>0){
+if(strategyName==='ema-trend' && emaF[i]!=null && emaS[i]!=null && emaF[i]<emaS[i]){
+closePos(bar.c,i);exited=true;
+}else{
+var trail=highWater-params.kATR*a;
+if(bar.l<=trail){closePos(Math.min(trail,bar.o),i);exited=true;}
+}
+}else{
+if(strategyName==='ema-trend' && emaF[i]!=null && emaS[i]!=null && emaF[i]>emaS[i]){
+closePos(bar.c,i);exited=true;
+}else{
+var trail2=lowWater+params.kATR*a;
+if(bar.h>=trail2){closePos(Math.max(trail2,bar.o),i);exited=true;}
+}
+}
+}
+}
+if(side!==0)closePos(candles[endIdx-1].c,endIdx-1);
+var stats=btStats(trades);
+return {trades:trades,stats:stats,marks:marks};
+}
+
+function btStats(trades){
+var n=trades.length;
+if(n===0)return {trades:0,winrate:0,net:0,maxDD:0,pf:0,score:0};
+var wins=0,equity=100,peak=100,maxDD=0,gw=0,gl=0;
+for(var i=0;i<n;i++){
+var t=trades[i];
+if(t.net>0){wins++;gw+=t.net;}else{gl+=Math.abs(t.net);}
+equity*=(1+t.net);
+if(equity>peak)peak=equity;
+var dd=(peak-equity)/peak*100;
+if(dd>maxDD)maxDD=dd;
+}
+var net=equity-100;
+var wr=wins/n*100;
+var pf=gl>0?gw/gl:(gw>0?999:0);
+var score=net*Math.sqrt(n)/(1+maxDD/100);
+return {trades:n,winrate:wr,net:net,maxDD:maxDD,pf:pf,score:score};
+}
+
+function btCombos(strategyName, ranges){
+var keys=[],lists=[];
+for(var k in ranges){if(Array.isArray(ranges[k])){keys.push(k);lists.push(ranges[k]);}}
+var out=[];
+function rec(idx,cur){
+if(idx===keys.length){
+var combo={};
+for(var c in ranges){if(!Array.isArray(ranges[c]))combo[c]=ranges[c];}
+for(var cc in cur)combo[cc]=cur[cc];
+out.push(combo);return;
+}
+for(var i=0;i<lists[idx].length;i++){cur[keys[idx]]=lists[idx][i];rec(idx+1,cur);}
+}
+rec(0,{});
+return out;
+}
+
+function btRanges(strategyName){
+if(strategyName==='donchian')return {N:[10,15,20,25,30,40,50],kATR:[1.0,1.5,2.0,2.5,3.0],atrPeriod:14};
+if(strategyName==='ema-trend')return {emaFast:[10,20,30],emaSlow:[50,100],kATR:[1.5,2.0,2.5],atrPeriod:14};
+if(strategyName==='vol-spike')return {N:[15,20,30],volMult:[1.5,2.0,2.5,3.0],volN:20,kATR:[1.5,2.0,2.5],atrPeriod:14};
+return {};
+}
+
+function btWalkForward(candles, strategyName){
+var n=candles.length;
+var trainEnd=Math.floor(n*0.6);
+var test1End=Math.floor(n*0.8);
+var test2End=n;
+var combos=btCombos(strategyName, btRanges(strategyName));
+var results=[];
+for(var i=0;i<combos.length;i++){
+var r=btRun(candles,0,trainEnd,combos[i],strategyName);
+results.push({params:combos[i],train:r.stats});
+}
+results.sort(function(a,b){return b.train.score-a.train.score;});
+var best=results[0];
+var test1=btRun(candles,trainEnd,test1End,best.params,strategyName);
+var test2=btRun(candles,test1End,test2End,best.params,strategyName);
+var top10=[];
+for(var j=0;j<Math.min(10,results.length);j++){
+var rj=results[j];
+var t1=btRun(candles,trainEnd,test1End,rj.params,strategyName);
+var t2=btRun(candles,test1End,test2End,rj.params,strategyName);
+top10.push({params:rj.params,train:rj.train,test1:t1.stats,test2:t2.stats});
+}
+return {
+trainEnd:trainEnd, test1End:test1End, test2End:test2End,
+best:best, test1:test1, test2:test2, top10:top10, combosCount:combos.length
+};
+}
+
+function btFmt(v){
+if(v==null||!isFinite(v))return '—';
+var abs=Math.abs(v);
+return abs<10?v.toFixed(2):Math.round(v).toString();
+}
+function btCls(v){
+if(v==null||!isFinite(v))return '';
+return v>0?'bt-pos':(v<0?'bt-neg':'');
+}
+
+function renderBtResult(res){
+var html='';
+html+='<p style="color:var(--muted)">Свечей: <b>'+state.candles.length+'</b> · Train: '+res.trainEnd+' · Test1: '+(res.test1End-res.trainEnd)+' · Test2: '+(res.test2End-res.test1End)+' · Комбинаций: '+res.combosCount+'</p>';
+html+='<h3 style="margin-top:12px;font-size:14px">Лучшая комбинация (выбрана на train)</h3>';
+html+='<p><code style="color:var(--accent);font-size:11px">'+JSON.stringify(res.best.params)+'</code></p>';
+html+='<table class="bt-table"><tr><th class="left">Период</th><th>Сделок</th><th>Winrate %</th><th>Net %</th><th>MaxDD %</th><th>PF</th><th>Score</th></tr>';
+html+=row('Train (in-sample)', res.best.train);
+html+=row('Test 1 (OOS)', res.test1.stats);
+html+=row('Test 2 (final OOS)', res.test2.stats);
+html+='</table>';
+var ratio = res.best.train.net !== 0 ? (res.test1.stats.net + res.test2.stats.net) / res.best.train.net * 100 : 0;
+html+='<p style="margin-top:8px;color:var(--muted)">OOS / In-sample = <b class="'+(ratio>50?'bt-pos':(ratio>0?'':'bt-neg'))+'">'+btFmt(ratio)+'%</b> '+(ratio<30?'— сильное переобучение, мало шансов вперёд':(ratio<60?'— умеренное переобучение':'— приемлемо'))+'</p>';
+html+='<h3 style="margin-top:16px;font-size:14px">Топ-10 комбинаций</h3>';
+html+='<table class="bt-table"><tr><th class="left">Параметры</th><th>Train %</th><th>Test1 %</th><th>Test2 %</th><th>Сделок</th><th>Score</th></tr>';
+for(var i=0;i<res.top10.length;i++){
+var t=res.top10[i];
+html+='<tr>';
+html+='<td class="left"><code>'+JSON.stringify(t.params)+'</code></td>';
+html+='<td class="'+btCls(t.train.net)+'">'+btFmt(t.train.net)+'</td>';
+html+='<td class="'+btCls(t.test1.net)+'">'+btFmt(t.test1.net)+'</td>';
+html+='<td class="'+btCls(t.test2.net)+'">'+btFmt(t.test2.net)+'</td>';
+html+='<td>'+(t.train.trades+t.test1.trades+t.test2.trades)+'</td>';
+html+='<td>'+btFmt(t.train.score)+'</td>';
+html+='</tr>';
+}
+html+='</table>';
+html+='<p style="margin-top:12px;color:var(--muted);font-size:11px">Метки сделок тестового периода (Test1 + Test2) нанесены на график: ▲ зелёный — long вход, ▼ красный — short вход, ✕ — выход.</p>';
+$('#bt-results').innerHTML=html;
+}
+function row(label,s){
+return '<tr><td class="left">'+label+'</td><td>'+s.trades+'</td><td>'+btFmt(s.winrate)+'</td><td class="'+btCls(s.net)+'">'+btFmt(s.net)+'</td><td>'+btFmt(s.maxDD)+'</td><td>'+btFmt(s.pf)+'</td><td>'+btFmt(s.score)+'</td></tr>';
+}
+
+function setupBacktestUi(){
+$('#btn-backtest').addEventListener('click',function(){
+$('#bt-modal').classList.add('show');
+});
+$('#bt-close').addEventListener('click',function(){
+$('#bt-modal').classList.remove('show');
+});
+$('#bt-clear-marks').addEventListener('click',function(){
+state.backtestMarks=[];draw();
+});
+$('#bt-run').addEventListener('click',function(){
+if(!state.candles.length){alert('Свечи ещё не загружены');return;}
+BT_COMM=(parseFloat($('#bt-comm').value)||0.04)/100;
+BT_SLIP=(parseFloat($('#bt-slip').value)||0.04)/100;
+var strategy=$('#bt-strategy').value;
+$('#bt-results').innerHTML='<p>Считаю…</p>';
+setTimeout(function(){
+try{
+var res=btWalkForward(state.candles,strategy);
+renderBtResult(res);
+state.backtestMarks = res.test1.marks.concat(res.test2.marks);
+draw();
+}catch(e){
+$('#bt-results').innerHTML='<p style="color:#ef5350">Ошибка: '+esc(e.message||String(e))+'</p>';
+console.error(e);
+}
+},30);
+});
+}
+/* ================== КОНЕЦ БЭКТЕСТА ================== */
 
 function renderTickerOptions(filter){
 filter=filter||'';
@@ -668,20 +896,15 @@ function setupUi(){
 var tfs=$('#tfs');
 tfs.innerHTML=TF_LIST.map(function(t){return '<button data-tf="'+t.key+'" class="'+(t.key===state.tfKey?'active':'')+'">'+t.label+'</button>';}).join('');
 tfs.addEventListener('click',function(e){
-var b=e.target.closest('button[data-tf]');
-if(!b)return;
-var key=b.dataset.tf;
-if(key===state.tfKey)return;
-saveLines();
-state.tfKey=key;
+var b=e.target.closest('button[data-tf]');if(!b)return;
+var key=b.dataset.tf;if(key===state.tfKey)return;
+saveLines();state.tfKey=key;
 var btns=tfs.querySelectorAll('button');
 for(var i=0;i<btns.length;i++){btns[i].classList.toggle('active',btns[i].dataset.tf===key);}
 reloadChart();
 });
-
 $('#ticker').addEventListener('change',function(e){
-saveLines();
-state.ticker=e.target.value;
+saveLines();state.ticker=e.target.value;
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
 reloadChart();
@@ -690,66 +913,41 @@ $('#search').addEventListener('input',function(e){renderTickerOptions(e.target.v
 $('#search').addEventListener('keydown',function(e){
 if(e.key==='Enter'){
 var first=$('#ticker').options[0];
-if(first){
-saveLines();
-$('#ticker').value=first.value;
-state.ticker=first.value;
+if(first){saveLines();$('#ticker').value=first.value;state.ticker=first.value;
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
-reloadChart();
-}
+reloadChart();}
 }
 });
-
 $('#btn-db').addEventListener('click',function(){
-state.db.enabled=!state.db.enabled;
-saveDbSettings();
+state.db.enabled=!state.db.enabled;saveDbSettings();
 $('#btn-db').classList.toggle('active',state.db.enabled);
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
-else{state.db.boxes=[];}
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 draw();
 });
-
 $('#db-len-inline').addEventListener('change',function(e){
 if(DB_DEFAULTS[state.ticker]){
-var fixed = DB_DEFAULTS[state.ticker];
-e.target.value = fixed;
-state.db.boxp = fixed;
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
-draw();
-return;
+var fixed=DB_DEFAULTS[state.ticker];e.target.value=fixed;state.db.boxp=fixed;
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();return;
 }
-var v=parseInt(e.target.value,10)||10;
-v=Math.max(2,Math.min(200,v));
-e.target.value=v;
-state.db.boxp=v;
-try{
-localStorage.setItem('db_boxp_'+state.ticker, String(v));
-}catch(err){}
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
-draw();
+var v=parseInt(e.target.value,10)||10;v=Math.max(2,Math.min(200,v));
+e.target.value=v;state.db.boxp=v;
+try{localStorage.setItem('db_boxp_'+state.ticker, String(v));}catch(err){}
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();
 });
-
 setupEmaInputs();
+setupBacktestUi();
 }
 
 function setupEmaInputs(){
 var e20=$('#ema20-inline'), e200=$('#ema200-inline');
 if(!e20||!e200)return;
-e20.value=state.ema20p;
-e200.value=state.ema200p;
+e20.value=state.ema20p;e200.value=state.ema200p;
 function apply(){
-var a=parseInt(e20.value,10);
-if(!(a>=1))a=20;
-a=Math.min(1000,a);
-e20.value=a;state.ema20p=a;
-var b=parseInt(e200.value,10);
-if(!(b>=1))b=200;
-b=Math.min(1000,b);
-e200.value=b;state.ema200p=b;
+var a=parseInt(e20.value,10);if(!(a>=1))a=20;a=Math.min(1000,a);e20.value=a;state.ema20p=a;
+var b=parseInt(e200.value,10);if(!(b>=1))b=200;b=Math.min(1000,b);e200.value=b;state.ema200p=b;
 try{localStorage.setItem('ema20p',String(a));localStorage.setItem('ema200p',String(b));}catch(err){}
-recomputeIndicators();
-draw();
+recomputeIndicators();draw();
 }
 e20.addEventListener('change',apply);
 e200.addEventListener('change',apply);
@@ -766,51 +964,22 @@ var e20=$('#ema20-inline');if(e20)e20.value=state.ema20p;
 var e200=$('#ema200-inline');if(e200)e200.value=state.ema200p;
 }
 
-function saveDbSettings(){
-try{
-localStorage.setItem('db_enabled',state.db.enabled?'1':'0');
-}catch(e){}
-}
-function loadDbSettings(){
-try{
-if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;
-}catch(e){}
-$('#btn-db').classList.toggle('active',state.db.enabled);
-}
+function saveDbSettings(){try{localStorage.setItem('db_enabled',state.db.enabled?'1':'0');}catch(e){}}
+function loadDbSettings(){try{if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;}catch(e){};$('#btn-db').classList.toggle('active',state.db.enabled);}
 
-function setStatus(html,isErr){
-var el=$('#status');
-el.innerHTML=html;
-el.style.color=isErr?'#ef5350':'';
-}
+function setStatus(html,isErr){var el=$('#status');el.innerHTML=html;el.style.color=isErr?'#ef5350':'';}
 
 function candleCloseMs(){
 var tf=TF_BY_KEY[state.tfKey];
 var last=state.candles.length?state.candles.at(-1):null;
 if(!last)return 0;
-if(tf.iss===24){
-var md=new Date(last.t+MSK_OFFSET);
-var endMsk=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate(),END_HOUR_MSK,END_MIN_MSK,0,0);
-return endMsk-MSK_OFFSET;
-}
-if(tf.iss===7){
-var md=new Date(last.t+MSK_OFFSET);
-var dow=md.getUTCDay();
-var add=(5-dow+7)%7;
-var fri=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate()+add,END_HOUR_MSK,END_MIN_MSK,0,0);
-return fri-MSK_OFFSET;
-}
-if(tf.iss===31){
-var md=new Date(last.t+MSK_OFFSET);
-var endMonth=Date.UTC(md.getUTCFullYear(),md.getUTCMonth()+1,0,END_HOUR_MSK,END_MIN_MSK,0,0);
-return endMonth-MSK_OFFSET;
-}
+if(tf.iss===24){var md=new Date(last.t+MSK_OFFSET);var endMsk=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate(),END_HOUR_MSK,END_MIN_MSK,0,0);return endMsk-MSK_OFFSET;}
+if(tf.iss===7){var md=new Date(last.t+MSK_OFFSET);var dow=md.getUTCDay();var add=(5-dow+7)%7;var fri=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate()+add,END_HOUR_MSK,END_MIN_MSK,0,0);return fri-MSK_OFFSET;}
+if(tf.iss===31){var md=new Date(last.t+MSK_OFFSET);var endMonth=Date.UTC(md.getUTCFullYear(),md.getUTCMonth()+1,0,END_HOUR_MSK,END_MIN_MSK,0,0);return endMonth-MSK_OFFSET;}
 return last.t+tf.iss*60*1000*(tf.agg||1);
 }
 
 function refreshStatus(){
-var t=new Date(state.lastUpdate);
-var upd=state.lastUpdate?pad2(t.getHours())+':'+pad2(t.getMinutes())+':'+pad2(t.getSeconds()):'—';
 var first=state.candles.length?state.candles[0]:null;
 var last=state.candles.length?state.candles.at(-1):null;
 var price=last?fmtNum(last.c):'—';
@@ -822,9 +991,8 @@ var diff=candleCloseMs()-Date.now();
 if(diff>0){cd='закр. через '+fmtCountdown(diff);}
 else if(diff<0){cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-diff)+'</span>';}
 }
-if(state.err){
-setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);
-}else{
+if(state.err){setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);}
+else{
 var bg=state.bgLoading?' · <span style="color:var(--accent)">фон.догрузка…</span>':'';
 setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg);
 }
@@ -838,116 +1006,77 @@ for(var j=0;j<tail.length;j++){map[tail[j].t]=tail[j];}
 for(var k in map){merged.push(map[k]);}
 merged.sort(function(a,b){return a.t-b.t;});
 state.rawIss=merged;
-var tf=TF_BY_KEY[state.tfKey];
-state.candles=aggregate(merged,tf.agg);
+state.candles=aggregate(merged,TF_BY_KEY[state.tfKey].agg);
 }
 
-/* === Фоновая догрузка полной истории (B) === */
 function refreshInBackground(gen, tf){
 var tickerAtStart=state.ticker;
 var tfKeyAtStart=state.tfKey;
-
-/* запоминаем timestamp-границы viewport, чтобы потом восстановить */
 var oldCandles=state.candles;
-var tStart=null, tEnd=null;
+var tStart=null,tEnd=null;
 if(oldCandles.length){
 var vs=Math.max(0,Math.min(oldCandles.length-1,Math.floor(state.view.start)));
 var ve=Math.max(0,Math.min(oldCandles.length-1,Math.ceil(state.view.end)));
-tStart=oldCandles[vs].t;
-tEnd=oldCandles[ve].t;
+tStart=oldCandles[vs].t;tEnd=oldCandles[ve].t;
 }
 var wasAtEnd=(state.view.end>=oldCandles.length-2);
-
-state.bgLoading=true;
-refreshStatus();
-
+state.bgLoading=true;refreshStatus();
 loadAll(state.ticker, tf, MAX_CANDLES, null).then(function(raw){
 if(gen!==loadGen)return;
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart)return;
 if(!raw.length)return;
-
-/* merge с уже имеющимися (по timestamp) */
 var map={};
 for(var i=0;i<raw.length;i++)map[raw[i].t]=raw[i];
 for(var j=0;j<state.rawIss.length;j++)map[state.rawIss[j].t]=state.rawIss[j];
 var merged=[];
 for(var k in map)merged.push(map[k]);
 merged.sort(function(a,b){return a.t-b.t;});
-
 state.rawIss=merged;
 state.candles=aggregate(merged,tf.agg);
-state.lastUpdate=Date.now();
-state.err='';
-
-/* пересчёт индексов линий по сохранённым timestamp */
+state.lastUpdate=Date.now();state.err='';
 remapLines();
-
-/* восстановление viewport по timestamp (или в конец, если был в конце) */
 if(wasAtEnd){
 state.view.end=state.candles.length-1;
 state.view.start=Math.max(0,state.view.end-Math.min(120,state.candles.length));
 }else if(tStart!=null && tEnd!=null){
-var ni=timeToIndex(tStart);
-var nj=timeToIndex(tEnd);
-if(ni!=null && nj!=null && nj>ni){
-state.view.start=ni;
-state.view.end=nj;
+var ni=timeToIndex(tStart);var nj=timeToIndex(tEnd);
+if(ni!=null && nj!=null && nj>ni){state.view.start=ni;state.view.end=nj;}
 }
-}
-
 recomputeIndicators();
 updateMemCache();
-refreshStatus();
-draw();
-}).catch(function(e){
-/* фоновая догрузка упала — не критично, данные уже показаны */
-}).then(function(){
+refreshStatus();draw();
+}).catch(function(e){}).then(function(){
 if(gen!==loadGen)return;
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart)return;
-state.bgLoading=false;
-refreshStatus();
+state.bgLoading=false;refreshStatus();
 });
 }
 
-/* === Перезагрузка: кэш → хвост → фон (B + C) === */
 function reloadChart(){
 var gen=++loadGen;
 state.err='';
-
+state.backtestMarks=[];
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
-
 var tf=TF_BY_KEY[state.tfKey];
 var cacheKey=state.ticker+'|'+state.tfKey;
 var cached=memCache[cacheKey];
 
-/* 1) Есть кэш — показываем мгновенно */
 if(cached && cached.candles && cached.candles.length){
 state.rawIss=cached.rawIss;
 state.candles=cached.candles;
 var n=state.candles.length;
-state.view.end=n-1;
-state.view.start=Math.max(0,n-Math.min(120,n));
-state.manualPx=false;
-state.viewPx={min:0,max:0};
+state.view.end=n-1;state.view.start=Math.max(0,n-Math.min(120,n));
+state.manualPx=false;state.viewPx={min:0,max:0};
 state.lastUpdate=cached.lastUpdate;
-state.loading=false;
-$('#loading').classList.add('hide');
-recomputeIndicators();
-loadLinesForTicker(state.ticker);
-refreshStatus();
-draw();
-
-/* в фоне: свежий кэш — только хвост; протухший — полная догрузка */
-if(Date.now()-cached.lastUpdate < MEM_CACHE_FRESH_MS){
-autoRefresh();
-}else{
-refreshInBackground(gen, tf);
-}
+state.loading=false;$('#loading').classList.add('hide');
+recomputeIndicators();loadLinesForTicker(state.ticker);
+refreshStatus();draw();
+if(Date.now()-cached.lastUpdate < MEM_CACHE_FRESH_MS){autoRefresh();}
+else{refreshInBackground(gen, tf);}
 return;
 }
 
-/* 2) Кэша нет — грузим хвост (быстро), потом историю в фоне */
 state.loading=true;
 $('#loading').classList.remove('hide');
 setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' …');
@@ -958,30 +1087,18 @@ if(!raw.length)throw new Error('Нет данных по '+state.ticker);
 state.rawIss=raw;
 state.candles=aggregate(raw,tf.agg);
 var n=state.candles.length;
-state.view.end=n-1;
-state.view.start=Math.max(0,n-Math.min(120,n));
-state.manualPx=false;
-state.viewPx={min:0,max:0};
+state.view.end=n-1;state.view.start=Math.max(0,n-Math.min(120,n));
+state.manualPx=false;state.viewPx={min:0,max:0};
 state.lastUpdate=Date.now();
-recomputeIndicators();
-loadLinesForTicker(state.ticker);
-updateMemCache();
-refreshStatus();
-draw();
-
-state.loading=false;
-$('#loading').classList.add('hide');
-
-/* в фоне — полная история */
+recomputeIndicators();loadLinesForTicker(state.ticker);updateMemCache();
+refreshStatus();draw();
+state.loading=false;$('#loading').classList.add('hide');
 refreshInBackground(gen, tf);
 }).catch(function(e){
 if(gen!==loadGen)return;
 state.err=(e&&e.message)?e.message:String(e);
-refreshStatus();
-console.error(e);
-state.loading=false;
-$('#loading').classList.add('hide');
-draw();
+refreshStatus();console.error(e);
+state.loading=false;$('#loading').classList.add('hide');draw();
 });
 }
 
@@ -991,36 +1108,28 @@ function stopAutoRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshT
 function autoRefresh(){
 if(state.loading||state.bgLoading||!state.candles.length)return;
 if(drag||dragX||dragY||touchDrag||pinch||drawState.draggingPoint)return;
-
 var tickerAtStart=state.ticker;
 var tfKeyAtStart=state.tfKey;
 var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end===oldLen-1);
 var visibleCount=state.view.end-state.view.start;
-
 loadTail(state.ticker,tf,600).then(function(raw){
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart) return;
 if(!raw.length)return;
 mergeTail(raw);
 var newLen=state.candles.length;
 if(wasAtEnd&&newLen>0){
-var newEnd=newLen-1;
-var newStart=newEnd-visibleCount;
+var newEnd=newLen-1;var newStart=newEnd-visibleCount;
 var clamped=clampView(newStart,newEnd);
-state.view.start=clamped.start;
-state.view.end=clamped.end;
+state.view.start=clamped.start;state.view.end=clamped.end;
 }
 recomputeIndicators();
-state.lastUpdate=Date.now();
-state.err='';
-updateMemCache();
-refreshStatus();
-draw();
+state.lastUpdate=Date.now();state.err='';
+updateMemCache();refreshStatus();draw();
 }).catch(function(e){
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart) return;
-state.err=(e&&e.message)?e.message:String(e);
-refreshStatus();
+state.err=(e&&e.message)?e.message:String(e);refreshStatus();
 });
 }
 
@@ -1039,42 +1148,31 @@ ctx.setTransform(DPR,0,0,DPR,0,0);
 draw();
 }
 function plotRect(){
-return {
-x:LAYOUT.left,
-y:LAYOUT.top,
-w:Math.max(10, cssW - LAYOUT.left - LAYOUT.right - LAYOUT.paddingRight),
-h:Math.max(10, cssH - LAYOUT.top - LAYOUT.bottom)
-};
+return {x:LAYOUT.left,y:LAYOUT.top,w:Math.max(10,cssW-LAYOUT.left-LAYOUT.right-LAYOUT.paddingRight),h:Math.max(10,cssH-LAYOUT.top-LAYOUT.bottom)};
 }
 function priceAxisX(rect){return rect.x + rect.w + LAYOUT.paddingRight;}
 
 function clampView(ns, ne){
 var c=state.candles;
 if(!c.length)return {start:ns,end:ne};
-var span=ne-ns;
-if(span<=0){span=1;ne=ns+1;}
+var span=ne-ns;if(span<=0){span=1;ne=ns+1;}
 var overscroll=Math.max(15,Math.min(100,Math.floor(span*0.5)));
-var minStart=-overscroll;
-var maxEnd=c.length-1+overscroll;
+var minStart=-overscroll;var maxEnd=c.length-1+overscroll;
 if(ns<minStart){ns=minStart;ne=ns+span;}
 if(ne>maxEnd){ne=maxEnd;ns=ne-span;}
-if(ns<minStart)ns=minStart;
-if(ne>maxEnd)ne=maxEnd;
+if(ns<minStart)ns=minStart;if(ne>maxEnd)ne=maxEnd;
 return {start:ns,end:ne};
 }
 
 function priceRange(){
 var c=state.candles;
 if(!c.length)return {min:0,max:1};
-if(state.manualPx && state.viewPx.max > state.viewPx.min){
-return {min: state.viewPx.min, max: state.viewPx.max};
-}
-var s=Math.max(0,state.view.start);
-var e=Math.min(c.length-1,state.view.end);
+if(state.manualPx && state.viewPx.max > state.viewPx.min)return {min:state.viewPx.min,max:state.viewPx.max};
+var s=Math.max(0,state.view.start);var e=Math.min(c.length-1,state.view.end);
 if(e<s){
-var ref = (state.view.start > c.length-1) ? c[c.length-1] : c[0];
+var ref=(state.view.start>c.length-1)?c[c.length-1]:c[0];
 var pad0=(ref.h-ref.l)*0.08 || Math.abs(ref.c)*0.01 || 1;
-return {min:ref.l-pad0, max:ref.h+pad0};
+return {min:ref.l-pad0,max:ref.h+pad0};
 }
 var mn=Infinity,mx=-Infinity;
 for(var i=s;i<=e;i++){var k=c[i];if(k.l<mn)mn=k.l;if(k.h>mx)mx=k.h;}
@@ -1082,13 +1180,12 @@ if(state.db.enabled && state.db.boxes.length){
 for(var b=0;b<state.db.boxes.length;b++){
 var bx=state.db.boxes[b];
 if(bx.right<s || bx.left>e)continue;
-if(bx.top>mx)mx=bx.top;
-if(bx.bottom<mn)mn=bx.bottom;
+if(bx.top>mx)mx=bx.top;if(bx.bottom<mn)mn=bx.bottom;
 }
 }
-var ema20=state.ema20, ema200=state.ema200;
+var ema20=state.ema20,ema200=state.ema200;
 for(var i2=s;i2<=e;i2++){
-var v1=ema20[i2], v2=ema200[i2];
+var v1=ema20[i2],v2=ema200[i2];
 if(v1!=null&&isFinite(v1)){if(v1<mn)mn=v1;if(v1>mx)mx=v1;}
 if(v2!=null&&isFinite(v2)){if(v2<mn)mn=v2;if(v2>mx)mx=v2;}
 }
@@ -1104,48 +1201,31 @@ function draw(){
 ctx.clearRect(0,0,cssW,cssH);
 var rect=plotRect();
 var c=state.candles;
-
 ctx.fillStyle=getCss('--bg');ctx.fillRect(0,0,cssW,cssH);
 ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
 ctx.fillStyle=getCss('--chart-bg');ctx.fillRect(rect.x+rect.w, rect.y, LAYOUT.paddingRight, rect.h);
-
 if(!c.length){
 ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
-ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);
-return;
+ctx.fillText('Нет данных',rect.x+rect.w/2,rect.y+rect.h/2);return;
 }
-
-var viewStart=state.view.start;
-var viewEnd=state.view.end;
-var viewSpan=viewEnd-viewStart;
-if(viewSpan<=0){viewSpan=1;viewEnd=viewStart+1;}
-
+var viewStart=state.view.start;var viewEnd=state.view.end;
+var viewSpan=viewEnd-viewStart;if(viewSpan<=0){viewSpan=1;viewEnd=viewStart+1;}
 var rng=priceRange();
-var s=Math.max(0,viewStart);
-var e=Math.min(c.length-1,viewEnd);
-var hasVisible=(e>=s);
-var slot=rect.w/viewSpan;
-
+var s=Math.max(0,viewStart);var e=Math.min(c.length-1,viewEnd);
+var hasVisible=(e>=s);var slot=rect.w/viewSpan;
 drawGrid(rect,rng,viewStart,viewEnd,viewSpan);
-
 if(!hasVisible){
-ctx.fillStyle=getCss('--muted');
-ctx.font='13px sans-serif';
-ctx.textAlign='center';
+ctx.fillStyle=getCss('--muted');ctx.font='13px sans-serif';ctx.textAlign='center';
 ctx.fillText('Нет данных в видимой области',rect.x+rect.w/2,rect.y+rect.h/2);
 ctx.font='12px sans-serif';ctx.textAlign='left';ctx.fillStyle=getCss('--muted');
 ctx.fillText(state.ticker+' · '+TF_BY_KEY[state.tfKey].label,rect.x+6,rect.y+14);
-if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
-return;
+if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);return;
 }
-
 if(state.db.enabled && state.db.boxes.length)drawDarvas(rect,rng,viewStart,viewEnd,viewSpan);
-
 var bw=Math.max(1,Math.min(14,slot*0.7));
 var upC=getCss('--up'),dnC=getCss('--down');
 for(var idx=s;idx<=e;idx++){
-var k=c[idx];
-var cx=rect.x+(idx-viewStart+0.5)*slot;
+var k=c[idx];var cx=rect.x+(idx-viewStart+0.5)*slot;
 var up=k.c>=k.o;
 ctx.strokeStyle=up?upC:dnC;ctx.fillStyle=up?upC:dnC;
 var yH=yForPrice(k.h,rect,rng),yL=yForPrice(k.l,rect,rng);
@@ -1154,20 +1234,13 @@ var yO=yForPrice(k.o,rect,rng),yC=yForPrice(k.c,rect,rng);
 var top=Math.min(yO,yC),hh=Math.max(1,Math.abs(yC-yO));
 if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
-
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema200,EMA200_COLOR,EMA200_WIDTH);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema20,EMA20_COLOR,EMA20_WIDTH);
-
+if(state.backtestMarks && state.backtestMarks.length)drawBacktestMarks(rect,rng,viewStart,viewSpan);
 drawLines(rect, rng);
-
-var lastIdx=e;
-var last=c[lastIdx];
-var lastY=yForPrice(last.c,rect,rng);
-
+var lastIdx=e;var last=c[lastIdx];var lastY=yForPrice(last.c,rect,rng);
 drawPriceTag(lastY,last.c,rect);
-
-ctx.font='12px sans-serif';ctx.textAlign='left';
-ctx.fillStyle=getCss('--muted');
+ctx.font='12px sans-serif';ctx.textAlign='left';ctx.fillStyle=getCss('--muted');
 var visibleCount=e-s+1;
 var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visibleCount+' св.';
 if(state.manualPx)label+=' · Y-zoom (dbl-click)';
@@ -1175,53 +1248,61 @@ ctx.fillText(label,rect.x+6,rect.y+14);
 ctx.font='11px sans-serif';
 ctx.fillStyle=EMA20_COLOR;ctx.fillText('EMA'+state.ema20p,rect.x+6,rect.y+28);
 ctx.fillStyle=EMA200_COLOR;ctx.fillText('EMA'+state.ema200p,rect.x+70,rect.y+28);
-
+if(state.backtestMarks && state.backtestMarks.length){
+ctx.fillStyle=getCss('--muted');ctx.fillText('Бэктест: '+state.backtestMarks.length+' меток',rect.x+150,rect.y+28);
+}
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
+}
+
+function drawBacktestMarks(rect,rng,viewStart,viewSpan){
+var marks=state.backtestMarks;var slot=rect.w/viewSpan;
+for(var i=0;i<marks.length;i++){
+var m=marks[i];
+if(m.idx < viewStart-1 || m.idx > viewStart+viewSpan+1)continue;
+var x=rect.x+(m.idx-viewStart+0.5)*slot;
+var y=yForPrice(m.price,rect,rng);
+ctx.save();
+if(m.type==='long-entry'){
+ctx.fillStyle='#26a69a';
+ctx.beginPath();ctx.moveTo(x,y+10);ctx.lineTo(x-6,y+20);ctx.lineTo(x+6,y+20);ctx.closePath();ctx.fill();
+}else if(m.type==='short-entry'){
+ctx.fillStyle='#ef5350';
+ctx.beginPath();ctx.moveTo(x,y-10);ctx.lineTo(x-6,y-20);ctx.lineTo(x+6,y-20);ctx.closePath();ctx.fill();
+}else if(m.type==='exit'){
+ctx.strokeStyle=m.side>0?'#26a69a':'#ef5350';ctx.lineWidth=2;
+ctx.beginPath();ctx.moveTo(x-5,y-5);ctx.lineTo(x+5,y+5);ctx.moveTo(x+5,y-5);ctx.lineTo(x-5,y+5);ctx.stroke();
+}
+ctx.restore();
+}
 }
 
 function drawEMA(rect,rng,viewStart,viewEnd,viewSpan,arr,color,width){
 if(!arr||!arr.length)return;
-var c=state.candles;
-var s=Math.max(0,viewStart);
-var e=Math.min(c.length-1,viewEnd);
+var c=state.candles;var s=Math.max(0,viewStart);var e=Math.min(c.length-1,viewEnd);
 if(e<s)return;
 var slot=rect.w/viewSpan;
 ctx.save();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineJoin='round';
-ctx.beginPath();
-var started=false;
+ctx.beginPath();var started=false;
 for(var idx=s;idx<=e;idx++){
-var v=arr[idx];
-if(v==null||!isFinite(v)){started=false;continue;}
-var x=rect.x+(idx-viewStart+0.5)*slot;
-var y=yForPrice(v,rect,rng);
-if(!started){ctx.moveTo(x,y);started=true;}
-else ctx.lineTo(x,y);
+var v=arr[idx];if(v==null||!isFinite(v)){started=false;continue;}
+var x=rect.x+(idx-viewStart+0.5)*slot;var y=yForPrice(v,rect,rng);
+if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
 }
 ctx.stroke();ctx.restore();
 }
 
 function drawDarvas(rect,rng,viewStart,viewEnd,viewSpan){
-var boxes=state.db.boxes;
-var slot=rect.w/viewSpan;
+var boxes=state.db.boxes;var slot=rect.w/viewSpan;
 for(var i=0;i<boxes.length;i++){
 var b=boxes[i];
 if(b.right<viewStart || b.left>viewEnd)continue;
-var clipL=Math.max(b.left,viewStart);
-var clipR=Math.min(b.right,viewEnd);
-var x1=rect.x+(clipL-viewStart)*slot;
-var x2=rect.x+(clipR+1-viewStart)*slot;
-var yTop=yForPrice(b.top,rect,rng);
-var yBottom=yForPrice(b.bottom,rect,rng);
-var lastC=state.candles[b.right].c;
-var r,g,bl;
-if(lastC>b.top){r=32;g=188;bl=34;}
-else if(lastC<b.bottom){r=255;g=25;bl=25;}
-else{r=255;g=181;bl=34;}
-ctx.save();
-ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';
-ctx.lineWidth=state.db.thickness;
-ctx.strokeRect(x1,yTop,x2-x1,yBottom-yTop);
-ctx.restore();
+var clipL=Math.max(b.left,viewStart);var clipR=Math.min(b.right,viewEnd);
+var x1=rect.x+(clipL-viewStart)*slot;var x2=rect.x+(clipR+1-viewStart)*slot;
+var yTop=yForPrice(b.top,rect,rng);var yBottom=yForPrice(b.bottom,rect,rng);
+var lastC=state.candles[b.right].c;var r,g,bl;
+if(lastC>b.top){r=32;g=188;bl=34;}else if(lastC<b.bottom){r=255;g=25;bl=25;}else{r=255;g=181;bl=34;}
+ctx.save();ctx.strokeStyle='rgba('+r+','+g+','+bl+',0.95)';ctx.lineWidth=state.db.thickness;
+ctx.strokeRect(x1,yTop,x2-x1,yBottom-yTop);ctx.restore();
 }
 }
 
@@ -1236,21 +1317,16 @@ var y=yForPrice(p,rect,rng);
 ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(axisX,y);ctx.stroke();
 ctx.fillText(fmtNum(p),axisX+6,y+3);
 }
-var c=state.candles;
-var s=Math.max(0,viewStart);
-var e=Math.min(c.length-1,viewEnd);
+var c=state.candles;var s=Math.max(0,viewStart);var e=Math.min(c.length-1,viewEnd);
 if(e<s){ctx.restore();return;}
-var actualCount=e-s+1;
-var slot=rect.w/viewSpan;
+var actualCount=e-s+1;var slot=rect.w/viewSpan;
 var target=Math.min(10,actualCount);
 ctx.textAlign='center';
 for(var j=0;j<target;j++){
-var relIdx = target>1 ? Math.round((actualCount-1)*(j/(target-1))) : 0;
-var idx=s+relIdx;
-var x=rect.x+(idx-viewStart+0.5)*slot;
+var relIdx=target>1?Math.round((actualCount-1)*(j/(target-1))):0;
+var idx=s+relIdx;var x=rect.x+(idx-viewStart+0.5)*slot;
 ctx.beginPath();ctx.moveTo(x,rect.y);ctx.lineTo(x,rect.y+rect.h);ctx.stroke();
-var k=c[idx];
-var d=new Date(k.t);
+var k=c[idx];var d=new Date(k.t);
 var label=(state.tfKey==='1d'||state.tfKey==='1w'||state.tfKey==='1M')?pad2(d.getDate())+'.'+pad2(d.getMonth()+1):fmtHm(k.t);
 ctx.fillText(label,x,rect.y+rect.h+14);
 }
@@ -1259,29 +1335,19 @@ ctx.restore();
 
 function drawAxisTag(rect,y,price,bg,fg){
 var x=priceAxisX(rect);
-ctx.save();
-ctx.fillStyle=bg;
-ctx.fillRect(x,y-9,LAYOUT.right-6,18);
-ctx.fillStyle=fg;
-ctx.font='bold 11px sans-serif';
-ctx.textAlign='left';
-ctx.fillText(fmtNum(price),x+4,y+4);
-ctx.restore();
+ctx.save();ctx.fillStyle=bg;ctx.fillRect(x,y-9,LAYOUT.right-6,18);
+ctx.fillStyle=fg;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+ctx.fillText(fmtNum(price),x+4,y+4);ctx.restore();
 }
-
-function drawPriceTag(y,price,rect){
-drawAxisTag(rect,y,price,getCss('--accent'),'#111');
-}
+function drawPriceTag(y,price,rect){drawAxisTag(rect,y,price,getCss('--accent'),'#111');}
 
 function drawCrosshair(rect,rng,x,y){
 if(x<rect.x||x>rect.x+rect.w||y<rect.y||y>rect.y+rect.h)return;
 ctx.save();ctx.strokeStyle='rgba(215,221,229,.45)';ctx.setLineDash([3,3]);
 ctx.beginPath();ctx.moveTo(x,rect.y);ctx.lineTo(x,rect.y+rect.h);ctx.stroke();
 ctx.beginPath();ctx.moveTo(rect.x,y);ctx.lineTo(rect.x+rect.w,y);ctx.stroke();ctx.restore();
-var p=priceForY(y,rect,rng);
-var axisX=priceAxisX(rect);
-ctx.save();ctx.fillStyle='#2a323d';
-ctx.fillRect(axisX,y-9,LAYOUT.right-6,18);
+var p=priceForY(y,rect,rng);var axisX=priceAxisX(rect);
+ctx.save();ctx.fillStyle='#2a323d';ctx.fillRect(axisX,y-9,LAYOUT.right-6,18);
 ctx.fillStyle=getCss('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';
 ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 }
@@ -1293,14 +1359,11 @@ if(drawState.draggingPoint){cv.style.cursor='grabbing';return;}
 if(dragY){cv.style.cursor='ns-resize';return;}
 if(dragX){cv.style.cursor='ew-resize';return;}
 if(drag){cv.style.cursor='grabbing';return;}
-var rect=plotRect();
-var axisX=priceAxisX(rect);
-
+var rect=plotRect();var axisX=priceAxisX(rect);
 if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
 var rngP = priceRange();
 if(hitTestPoint(mx, my, rect, rngP)){cv.style.cursor='grab';return;}
 }
-
 if(drawState.mode==='line'){cv.style.cursor='crosshair';return;}
 if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){cv.style.cursor='ns-resize';return;}
 if(my>=rect.y+rect.h && my<=cssH && mx>=rect.x && mx<=axisX){cv.style.cursor='ew-resize';return;}
@@ -1309,43 +1372,26 @@ cv.style.cursor='crosshair';
 
 cv.addEventListener('mousemove',function(e){
 var r=cv.getBoundingClientRect();
-var mx=e.clientX-r.left;
-var my=e.clientY-r.top;
+var mx=e.clientX-r.left;var my=e.clientY-r.top;
 var rect=plotRect();
 hover.active=true;hover.x=mx;hover.y=my;
-hover.inPlot = (mx >= rect.x && mx <= rect.x + rect.w && my >= rect.y && my <= rect.y + rect.h);
-updateHoverCandle();draw();
-updateCursor(mx,my);
+hover.inPlot=(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h);
+updateHoverCandle();draw();updateCursor(mx,my);
 });
 cv.addEventListener('mouseleave',function(){
-hover.active=false;hover.inPlot=false;$('#ohlc').style.display='none';draw();
-cv.style.cursor='crosshair';
+hover.active=false;hover.inPlot=false;$('#ohlc').style.display='none';draw();cv.style.cursor='crosshair';
 });
-
 cv.addEventListener('contextmenu',function(e){
 e.preventDefault();
-if(drawState.pendingPoint){
-drawState.pendingPoint = null;
-draw();
-return;
-}
-if(drawState.mode === 'line'){
-drawState.mode = null;
-updateDrawUi();
-draw();
-return;
-}
-drawState.mode = 'line';
-drawState.selectedId = null;
-updateDrawUi();
-draw();
+if(drawState.pendingPoint){drawState.pendingPoint=null;draw();return;}
+if(drawState.mode==='line'){drawState.mode=null;updateDrawUi();draw();return;}
+drawState.mode='line';drawState.selectedId=null;updateDrawUi();draw();
 });
 
 function updateHoverCandle(){
 var rect=plotRect();
 if(hover.x<rect.x||hover.x>rect.x+rect.w||hover.y<rect.y||hover.y>rect.y+rect.h){$('#ohlc').style.display='none';return;}
-var viewSpan=state.view.end-state.view.start;
-if(viewSpan<=0)return;
+var viewSpan=state.view.end-state.view.start;if(viewSpan<=0)return;
 var rel=(hover.x-rect.x)/rect.w;
 var idx=Math.floor(rel*viewSpan)+state.view.start;
 var c=state.candles;
@@ -1353,8 +1399,7 @@ if(idx<0||idx>=c.length){$('#ohlc').style.display='none';return;}
 showOhlc(c[idx]);
 }
 function showOhlc(k){
-var el=$('#ohlc');
-var d=new Date(k.t);
+var el=$('#ohlc');var d=new Date(k.t);
 var dt=pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
 var color=k.c>=k.o?getCss('--up'):getCss('--down');
 el.innerHTML='<span>'+dt+'</span>  <b style="color:'+color+'">O '+fmtNum(k.o)+' H '+fmtNum(k.h)+' L '+fmtNum(k.l)+' C '+fmtNum(k.c)+'</b>  <span>V '+Math.round(k.v).toLocaleString('ru-RU')+'</span>';
@@ -1362,262 +1407,135 @@ el.style.display='block';
 }
 
 function zoomHorizontalRight(factor){
-var c=state.candles;
-if(!c.length)return;
-var n=state.view.end-state.view.start;
-if(n<=0)return;
-var newN=Math.round(n*factor);
-newN=Math.max(10,Math.min(c.length-1,newN));
-var ne=state.view.end;
-var ns=ne-newN;
-var clamped=clampView(ns,ne);
-state.view.start=clamped.start;
-state.view.end=clamped.end;
-draw();
+var c=state.candles;if(!c.length)return;
+var n=state.view.end-state.view.start;if(n<=0)return;
+var newN=Math.round(n*factor);newN=Math.max(10,Math.min(c.length-1,newN));
+var ne=state.view.end;var ns=ne-newN;
+var clamped=clampView(ns,ne);state.view.start=clamped.start;state.view.end=clamped.end;draw();
 }
-
-function zoomVertical(factor, mouseY){
-var c=state.candles;
-if(!c.length)return;
-var rect=plotRect();
-var rng=priceRange();
+function zoomVertical(factor,mouseY){
+var c=state.candles;if(!c.length)return;
+var rect=plotRect();var rng=priceRange();
 var anchorPx=priceForY(mouseY,rect,rng);
 var newMin=anchorPx-(anchorPx-rng.min)*factor;
 var newMax=anchorPx+(rng.max-anchorPx)*factor;
 var span=newMax-newMin;
-if(span<0.0001)return;
-if(span>(rng.max-rng.min)*100)return;
-state.manualPx=true;
-state.viewPx={min:newMin,max:newMax};
-draw();
+if(span<0.0001)return;if(span>(rng.max-rng.min)*100)return;
+state.manualPx=true;state.viewPx={min:newMin,max:newMax};draw();
 }
 
 cv.addEventListener('wheel',function(e){
 e.preventDefault();
-var r=cv.getBoundingClientRect();
-var mx=e.clientX-r.left;
-var my=e.clientY-r.top;
-var rect=plotRect();
-var axisX=priceAxisX(rect);
+var r=cv.getBoundingClientRect();var mx=e.clientX-r.left;var my=e.clientY-r.top;
+var rect=plotRect();var axisX=priceAxisX(rect);
 var factor=e.deltaY>0?1.15:0.87;
 if(my<rect.y||my>rect.y+rect.h)return;
-if(mx>=axisX && mx<=axisX+LAYOUT.right){
-zoomVertical(factor,my);
-}else if(mx<axisX){
-zoomHorizontalRight(factor);
-}
+if(mx>=axisX && mx<=axisX+LAYOUT.right){zoomVertical(factor,my);}
+else if(mx<axisX){zoomHorizontalRight(factor);}
 },{passive:false});
 
 cv.addEventListener('dblclick',function(e){
-var r=cv.getBoundingClientRect();
-var mx=e.clientX-r.left;
-var rect=plotRect();
-var axisX=priceAxisX(rect);
-if(mx>=axisX){
-state.manualPx=false;
-state.viewPx={min:0,max:0};
-draw();
-}
+var r=cv.getBoundingClientRect();var mx=e.clientX-r.left;
+var rect=plotRect();var axisX=priceAxisX(rect);
+if(mx>=axisX){state.manualPx=false;state.viewPx={min:0,max:0};draw();}
 });
 
-var drag=null;
-var dragY=null;
-var dragX=null;
+var drag=null,dragY=null,dragX=null;
 
 cv.addEventListener('mousedown',function(e){
 if(e.button!==0)return;
-
-var r=cv.getBoundingClientRect();
-var mx=e.clientX-r.left;
-var my=e.clientY-r.top;
-var rect=plotRect();
-var axisX=priceAxisX(rect);
-
+var r=cv.getBoundingClientRect();var mx=e.clientX-r.left;var my=e.clientY-r.top;
+var rect=plotRect();var axisX=priceAxisX(rect);
 if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
-var rngPoint = priceRange();
-var hitPt = hitTestPoint(mx, my, rect, rngPoint);
+var rngPoint=priceRange();
+var hitPt=hitTestPoint(mx,my,rect,rngPoint);
 if(hitPt){
-drawState.draggingPoint = {lineId: hitPt.line.id, which: hitPt.which};
-cv.style.cursor = 'grabbing';
-draw();
-e.preventDefault();
-return;
+drawState.draggingPoint={lineId:hitPt.line.id,which:hitPt.which};
+cv.style.cursor='grabbing';draw();e.preventDefault();return;
 }
 }
-
 if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){
-var rng=priceRange();
-var clampY=Math.max(rect.y,Math.min(rect.y+rect.h,my));
-dragY={
-startY:e.clientY,
-anchorPrice:priceForY(clampY,rect,rng),
-startMin:rng.min,
-startMax:rng.max
-};
-cv.style.cursor='ns-resize';
-e.preventDefault();
-return;
+var rng=priceRange();var clampY=Math.max(rect.y,Math.min(rect.y+rect.h,my));
+dragY={startY:e.clientY,anchorPrice:priceForY(clampY,rect,rng),startMin:rng.min,startMax:rng.max};
+cv.style.cursor='ns-resize';e.preventDefault();return;
 }
-
 if(my>=rect.y+rect.h && my<=cssH && mx>=rect.x && mx<=axisX){
-var n=state.view.end-state.view.start;
-if(n<=0)return;
+var n=state.view.end-state.view.start;if(n<=0)return;
 var rel=Math.max(0,Math.min(1,(mx-rect.x)/rect.w));
-dragX={
-startX:e.clientX,
-rel:rel,
-anchorIdx:state.view.start+rel*n,
-n:n
-};
-cv.style.cursor='ew-resize';
-e.preventDefault();
-return;
+dragX={startX:e.clientX,rel:rel,anchorIdx:state.view.start+rel*n,n:n};
+cv.style.cursor='ew-resize';e.preventDefault();return;
 }
-
 if(drawState.mode==='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
-var rngD = priceRange();
-var dp = pxToData(mx, my, rect, rngD);
-if(!drawState.pendingPoint){
-drawState.pendingPoint = dp;
-}else{
-var pp = drawState.pendingPoint;
-lines.push({
-id: drawState.nextId++,
-i1: pp.i, p1: pp.p, t1: nearestCandleTime(pp.i),
-i2: dp.i, p2: dp.p, t2: nearestCandleTime(dp.i),
-color: drawState.color
-});
-drawState.pendingPoint = null;
-saveLines();
+var rngD=priceRange();var dp=pxToData(mx,my,rect,rngD);
+if(!drawState.pendingPoint){drawState.pendingPoint=dp;}
+else{
+var pp=drawState.pendingPoint;
+lines.push({id:drawState.nextId++,i1:pp.i,p1:pp.p,t1:nearestCandleTime(pp.i),i2:dp.i,p2:dp.p,t2:nearestCandleTime(dp.i),color:drawState.color});
+drawState.pendingPoint=null;saveLines();
 }
-draw();
-e.preventDefault();
-return;
+draw();e.preventDefault();return;
 }
-
 if(drawState.mode!=='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
-var rngHit = priceRange();
-var hit = hitTestLine(mx, my, rect, rngHit);
-if(hit){
-drawState.selectedId = hit.id;
-draw();
-return;
-}else{
-if(drawState.selectedId){
-drawState.selectedId = null;
-draw();
+var rngHit=priceRange();var hit=hitTestLine(mx,my,rect,rngHit);
+if(hit){drawState.selectedId=hit.id;draw();return;}
+else{if(drawState.selectedId){drawState.selectedId=null;draw();}}
 }
-}
-}
-
 if(mx<rect.x||mx>rect.x+rect.w)return;
 if(my<rect.y||my>rect.y+rect.h)return;
 var rngStart=priceRange();
-drag={
-x:e.clientX,
-y:e.clientY,
-start:state.view.start,
-end:state.view.end,
-pxMin:rngStart.min,
-pxMax:rngStart.max,
-pxSpan:(rngStart.max-rngStart.min)||1
-};
+drag={x:e.clientX,y:e.clientY,start:state.view.start,end:state.view.end,pxMin:rngStart.min,pxMax:rngStart.max,pxSpan:(rngStart.max-rngStart.min)||1};
 cv.style.cursor='grabbing';
 });
 
 window.addEventListener('mousemove',function(e){
 if(drawState.draggingPoint){
-var rr = cv.getBoundingClientRect();
-var mxW = e.clientX - rr.left;
-var myW = e.clientY - rr.top;
-var rectW = plotRect();
-var rngW = priceRange();
-var dpW = pxToData(mxW, myW, rectW, rngW);
+var rr=cv.getBoundingClientRect();var mxW=e.clientX-rr.left;var myW=e.clientY-rr.top;
+var rectW=plotRect();var rngW=priceRange();var dpW=pxToData(mxW,myW,rectW,rngW);
 for(var li=0;li<lines.length;li++){
-if(lines[li].id === drawState.draggingPoint.lineId){
-if(drawState.draggingPoint.which === 1){
-lines[li].i1 = dpW.i;
-lines[li].p1 = dpW.p;
-lines[li].t1 = nearestCandleTime(dpW.i);
-}else{
-lines[li].i2 = dpW.i;
-lines[li].p2 = dpW.p;
-lines[li].t2 = nearestCandleTime(dpW.i);
-}
+if(lines[li].id===drawState.draggingPoint.lineId){
+if(drawState.draggingPoint.which===1){lines[li].i1=dpW.i;lines[li].p1=dpW.p;lines[li].t1=nearestCandleTime(dpW.i);}
+else{lines[li].i2=dpW.i;lines[li].p2=dpW.p;lines[li].t2=nearestCandleTime(dpW.i);}
 break;
 }
 }
-draw();
-return;
+draw();return;
 }
-
 if(dragY){
-var dy=e.clientY-dragY.startY;
-var factorY=Math.exp(dy/250);
-if(factorY<0.05)factorY=0.05;
-if(factorY>20)factorY=20;
+var dy=e.clientY-dragY.startY;var factorY=Math.exp(dy/250);
+if(factorY<0.05)factorY=0.05;if(factorY>20)factorY=20;
 var nMin=dragY.anchorPrice-(dragY.anchorPrice-dragY.startMin)*factorY;
 var nMax=dragY.anchorPrice+(dragY.startMax-dragY.anchorPrice)*factorY;
-if(nMax-nMin>1e-9){
-state.manualPx=true;
-state.viewPx={min:nMin,max:nMax};
-draw();
-}
+if(nMax-nMin>1e-9){state.manualPx=true;state.viewPx={min:nMin,max:nMax};draw();}
 return;
 }
-
 if(dragX){
-var dx=e.clientX-dragX.startX;
-var factorX=Math.exp(-dx/250);
-if(factorX<0.05)factorX=0.05;
-if(factorX>20)factorX=20;
+var dx=e.clientX-dragX.startX;var factorX=Math.exp(-dx/250);
+if(factorX<0.05)factorX=0.05;if(factorX>20)factorX=20;
 var c=state.candles;
-var newN=Math.round(dragX.n*factorX);
-newN=Math.max(10,Math.min(c.length-1,newN));
-var ns=Math.round(dragX.anchorIdx-dragX.rel*newN);
-var ne=ns+newN;
-var clampedX=clampView(ns,ne);
-state.view.start=clampedX.start;
-state.view.end=clampedX.end;
-draw();
+var newN=Math.round(dragX.n*factorX);newN=Math.max(10,Math.min(c.length-1,newN));
+var ns=Math.round(dragX.anchorIdx-dragX.rel*newN);var ne=ns+newN;
+var clampedX=clampView(ns,ne);state.view.start=clampedX.start;state.view.end=clampedX.end;draw();
 return;
 }
-
 if(!drag)return;
-var rect=plotRect();
-var dx2=e.clientX-drag.x;
-var dy2=e.clientY-drag.y;
+var rect=plotRect();var dx2=e.clientX-drag.x;var dy2=e.clientY-drag.y;
 var n=drag.end-drag.start;
-
 if(n>0 && dx2!==0){
 var shift=Math.round((dx2/rect.w)*n);
-var ns2=drag.start-shift;
-var ne2=drag.end-shift;
-var clamped=clampView(ns2,ne2);
-state.view.start=clamped.start;
-state.view.end=clamped.end;
+var ns2=drag.start-shift;var ne2=drag.end-shift;
+var clamped=clampView(ns2,ne2);state.view.start=clamped.start;state.view.end=clamped.end;
 }
-
 if(dy2!==0){
 var priceDelta=(dy2/rect.h)*drag.pxSpan;
 state.manualPx=true;
-state.viewPx={
-min:drag.pxMin+priceDelta,
-max:drag.pxMax+priceDelta
-};
+state.viewPx={min:drag.pxMin+priceDelta,max:drag.pxMax+priceDelta};
 }
-
 draw();
 });
 
 window.addEventListener('mouseup',function(){
-drag=null;
-dragY=null;
-dragX=null;
-if(drawState.draggingPoint){
-drawState.draggingPoint = null;
-saveLines();
-}
+drag=null;dragY=null;dragX=null;
+if(drawState.draggingPoint){drawState.draggingPoint=null;saveLines();}
 cv.style.cursor='crosshair';
 });
 
@@ -1626,17 +1544,8 @@ function touchDist(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.
 cv.addEventListener('touchstart',function(e){
 var r=cv.getBoundingClientRect();
 if(e.touches.length===1){
-var t0=e.touches[0];
-var rngT=priceRange();
-touchDrag={
-x:t0.clientX-r.left,
-y:t0.clientY-r.top,
-start:state.view.start,
-end:state.view.end,
-pxMin:rngT.min,
-pxMax:rngT.max,
-pxSpan:(rngT.max-rngT.min)||1
-};
+var t0=e.touches[0];var rngT=priceRange();
+touchDrag={x:t0.clientX-r.left,y:t0.clientY-r.top,start:state.view.start,end:state.view.end,pxMin:rngT.min,pxMax:rngT.max,pxSpan:(rngT.max-rngT.min)||1};
 hover.active=true;hover.x=t0.clientX-r.left;hover.y=t0.clientY-r.top;
 updateHoverCandle();draw();
 }else if(e.touches.length===2){
@@ -1652,34 +1561,23 @@ var dy=(e.touches[0].clientY-r.top)-touchDrag.y;
 var rect=plotRect(),n=touchDrag.end-touchDrag.start;
 if(n>0 && dx!==0){
 var shift=Math.round((dx/rect.w)*n);
-var ns=touchDrag.start-shift;
-var ne=touchDrag.end-shift;
-var clampedT=clampView(ns,ne);
-state.view.start=clampedT.start;
-state.view.end=clampedT.end;
+var ns=touchDrag.start-shift;var ne=touchDrag.end-shift;
+var clampedT=clampView(ns,ne);state.view.start=clampedT.start;state.view.end=clampedT.end;
 }
 if(dy!==0){
 var priceDelta=(dy/rect.h)*touchDrag.pxSpan;
 state.manualPx=true;
-state.viewPx={
-min:touchDrag.pxMin+priceDelta,
-max:touchDrag.pxMax+priceDelta
-};
+state.viewPx={min:touchDrag.pxMin+priceDelta,max:touchDrag.pxMax+priceDelta};
 }
 draw();
 }else if(e.touches.length===2&&pinch){
 var nd=touchDist(e.touches[0],e.touches[1]);
-var factor=pinch.d/nd;
-var rect2=plotRect();
+var factor=pinch.d/nd;var rect2=plotRect();
 var rel=Math.max(0,Math.min(1,(pinch.mid-rect2.x)/rect2.w));
-var newN=Math.round(pinch.n*factor);
-newN=Math.max(10,Math.min(state.candles.length,newN));
+var newN=Math.round(pinch.n*factor);newN=Math.max(10,Math.min(state.candles.length,newN));
 var anchor=pinch.start+rel*pinch.n;
 var ns2=Math.round(anchor-rel*newN),ne2=ns2+newN;
-var clampedP=clampView(ns2,ne2);
-state.view.start=clampedP.start;
-state.view.end=clampedP.end;
-draw();
+var clampedP=clampView(ns2,ne2);state.view.start=clampedP.start;state.view.end=clampedP.end;draw();
 }
 },{passive:true});
 cv.addEventListener('touchend',function(){
@@ -1711,13 +1609,9 @@ var elDb=document.getElementById('db-len-inline');
 if(elDb && document.activeElement!==elDb){
 var expected=getBoxpForTicker(state.ticker);
 if(state.db.boxp!==expected){
-state.db.boxp=expected;
-elDb.value=expected;
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
-draw();
-}else if(parseInt(elDb.value,10)!==expected){
-elDb.value=expected;
-}
+state.db.boxp=expected;elDb.value=expected;
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();
+}else if(parseInt(elDb.value,10)!==expected){elDb.value=expected;}
 }
 if(state.candles.length){
 refreshStatus();
@@ -1726,8 +1620,7 @@ if(!drag&&!dragY&&!dragX&&!touchDrag&&!drawState.draggingPoint)draw();
 },1000);
 }).catch(function(e){
 state.err=(e&&e.message)?e.message:String(e);
-refreshStatus();
-console.error(e);
+refreshStatus();console.error(e);
 });
 }
 init();
