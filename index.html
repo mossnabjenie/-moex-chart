@@ -61,7 +61,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 </header>
 
 <div id="draw-panel">
-  <button class="draw-btn" id="btn-draw-line" title="Режим рисования линии (клик → клик)">✏ Линия</button>
+  <button class="draw-btn" id="btn-draw-line" title="Режим рисования линии (ЛКМ → ЛКМ). ПКМ — выход">✏ Линия</button>
   <div class="color-swatches" id="color-swatches">
     <button class="color-btn active" data-color="#ffeb3b" style="background:#ffeb3b" title="Жёлтый"></button>
     <button class="color-btn" data-color="#2196f3" style="background:#2196f3" title="Синий"></button>
@@ -70,9 +70,9 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Белый"></button>
     <button class="color-btn" data-color="#ff9800" style="background:#ff9800" title="Оранжевый"></button>
   </div>
-  <button class="draw-btn" id="btn-delete-line" title="Удалить выделенную линию (или клавиша Delete)">🗑 Удалить</button>
+  <button class="draw-btn" id="btn-delete-line" title="Удалить выделенную линию (или Delete)">🗑 Удалить</button>
   <button class="draw-btn" id="btn-clear-lines" title="Удалить все линии">✕ Очистить</button>
-  <span class="draw-hint">Клик → точка 1, клик → точка 2. Клик на линии → выделить. Delete → удалить.</span>
+  <span class="draw-hint">ЛКМ: точка 1 → точка 2. ПКМ: отмена/выход. Выделенная линия → тяни её концы. Delete: удалить.</span>
 </div>
 
 <div id="chartWrap">
@@ -366,8 +366,9 @@ var refreshTimer=null;
 var drawState={
 mode:null,            // null | 'line'
 color:'#ffeb3b',
-pendingPoint:null,    // {i, p} — первая точка
+pendingPoint:null,    // {i, p} — первая точка недостроенной линии
 selectedId:null,      // id выделенной линии
+draggingPoint:null,   // {lineId, which: 1|2} — тащим точку выделенной линии
 nextId:1
 };
 var lines=[];         // [{id, i1, p1, i2, p2, color}]
@@ -405,6 +406,24 @@ if(pointToSegmentDist(px, py, x1, y1, x2, y2) < 8) return ln;
 return null;
 }
 
+/* Хит-тест только по КОНЕЧНЫМ ТОЧКАМ ВЫДЕЛЕННОЙ линии.
+   Возвращает {line, which: 1|2} или null. */
+function hitTestPoint(px, py, rect, rng){
+if(!drawState.selectedId) return null;
+var viewSpan = Math.max(1, state.view.end - state.view.start);
+for(var i=0;i<lines.length;i++){
+var ln = lines[i];
+if(ln.id !== drawState.selectedId) continue;
+var x1 = rect.x + (ln.i1 - state.view.start) / viewSpan * rect.w;
+var y1 = yForPrice(ln.p1, rect, rng);
+var x2 = rect.x + (ln.i2 - state.view.start) / viewSpan * rect.w;
+var y2 = yForPrice(ln.p2, rect, rng);
+if(Math.hypot(px - x1, py - y1) < 9) return {line: ln, which: 1};
+if(Math.hypot(px - x2, py - y2) < 9) return {line: ln, which: 2};
+}
+return null;
+}
+
 function drawLines(rect, rng){
 var viewStart = state.view.start;
 var viewSpan = Math.max(1, state.view.end - viewStart);
@@ -428,8 +447,10 @@ ctx.stroke();
 
 if(isSel){
 ctx.fillStyle = ln.color;
-ctx.beginPath();ctx.arc(x1, y1, 5, 0, Math.PI*2);ctx.fill();
-ctx.beginPath();ctx.arc(x2, y2, 5, 0, Math.PI*2);ctx.fill();
+ctx.strokeStyle = '#000';
+ctx.lineWidth = 1;
+ctx.beginPath();ctx.arc(x1, y1, 6, 0, Math.PI*2);ctx.fill();ctx.stroke();
+ctx.beginPath();ctx.arc(x2, y2, 6, 0, Math.PI*2);ctx.fill();ctx.stroke();
 }
 ctx.restore();
 }
@@ -481,6 +502,7 @@ $('#btn-delete-line').addEventListener('click', function(){
 if(drawState.selectedId){
 lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
 drawState.selectedId = null;
+drawState.draggingPoint = null;
 draw();
 }
 });
@@ -489,6 +511,7 @@ $('#btn-clear-lines').addEventListener('click', function(){
 if(lines.length && confirm('Удалить все линии?')){
 lines = [];
 drawState.selectedId = null;
+drawState.draggingPoint = null;
 draw();
 }
 });
@@ -686,7 +709,7 @@ function stopAutoRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshT
 
 function autoRefresh(){
 if(state.loading||!state.candles.length)return;
-if(drag||dragX||dragY||touchDrag||pinch)return;
+if(drag||dragX||dragY||touchDrag||pinch||drawState.draggingPoint)return;
 var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end===oldLen-1);
@@ -974,12 +997,20 @@ ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 var hover={active:false,x:0,y:0,inPlot:false};
 
 function updateCursor(mx,my){
+if(drawState.draggingPoint){cv.style.cursor='grabbing';return;}
 if(dragY){cv.style.cursor='ns-resize';return;}
 if(dragX){cv.style.cursor='ew-resize';return;}
 if(drag){cv.style.cursor='grabbing';return;}
-if(drawState.mode==='line'){cv.style.cursor='crosshair';return;}
 var rect=plotRect();
 var axisX=priceAxisX(rect);
+
+/* над точкой выделенной линии — курсор "grab" */
+if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
+var rngP = priceRange();
+if(hitTestPoint(mx, my, rect, rngP)){cv.style.cursor='grab';return;}
+}
+
+if(drawState.mode==='line'){cv.style.cursor='crosshair';return;}
 if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){cv.style.cursor='ns-resize';return;}
 if(my>=rect.y+rect.h && my<=cssH && mx>=rect.x && mx<=axisX){cv.style.cursor='ew-resize';return;}
 cv.style.cursor='crosshair';
@@ -998,6 +1029,29 @@ updateCursor(mx,my);
 cv.addEventListener('mouseleave',function(){
 hover.active=false;hover.inPlot=false;$('#ohlc').style.display='none';draw();
 cv.style.cursor='crosshair';
+});
+
+/* ПКМ — отмена недостроенной линии / выход из режима / снятие выделения */
+cv.addEventListener('contextmenu',function(e){
+e.preventDefault();
+/* 1) Если есть первая точка, но вторая не поставлена — отменяем линию */
+if(drawState.pendingPoint){
+drawState.pendingPoint = null;
+draw();
+return;
+}
+/* 2) Если активен режим рисования — выключаем */
+if(drawState.mode === 'line'){
+drawState.mode = null;
+updateDrawUi();
+draw();
+return;
+}
+/* 3) Если что-то выделено — снимаем выделение */
+if(drawState.selectedId){
+drawState.selectedId = null;
+draw();
+}
 });
 
 function updateHoverCandle(){
@@ -1084,45 +1138,25 @@ var dragY=null;
 var dragX=null;
 
 cv.addEventListener('mousedown',function(e){
+/* ЛКМ только — правый клик обрабатывается в contextmenu */
+if(e.button!==0)return;
+
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
 var my=e.clientY-r.top;
 var rect=plotRect();
 var axisX=priceAxisX(rect);
 
-/* 0) РЕЖИМ РИСОВАНИЯ ЛИНИИ */
-if(drawState.mode==='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
-var rngD = priceRange();
-var dp = pxToData(mx, my, rect, rngD);
-if(!drawState.pendingPoint){
-drawState.pendingPoint = dp;
-}else{
-var pp = drawState.pendingPoint;
-lines.push({
-id: drawState.nextId++,
-i1: pp.i, p1: pp.p,
-i2: dp.i, p2: dp.p,
-color: drawState.color
-});
-drawState.pendingPoint = null;
-}
+/* 0) ПЕРЕТАСКИВАНИЕ КОНЕЧНОЙ ТОЧКИ ВЫДЕЛЕННОЙ ЛИНИИ */
+if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
+var rngPoint = priceRange();
+var hitPt = hitTestPoint(mx, my, rect, rngPoint);
+if(hitPt){
+drawState.draggingPoint = {lineId: hitPt.line.id, which: hitPt.which};
+cv.style.cursor = 'grabbing';
 draw();
 e.preventDefault();
 return;
-}
-
-/* 0.5) HIT-TEST ЛИНИИ в обычном режиме */
-if(drawState.mode!=='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
-var rngHit = priceRange();
-var hit = hitTestLine(mx, my, rect, rngHit);
-if(hit){
-drawState.selectedId = hit.id;
-draw();
-}else{
-if(drawState.selectedId){
-drawState.selectedId = null;
-draw();
-}
 }
 }
 
@@ -1155,6 +1189,43 @@ e.preventDefault();
 return;
 }
 
+/* 1) РЕЖИМ РИСОВАНИЯ ЛИНИИ */
+if(drawState.mode==='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
+var rngD = priceRange();
+var dp = pxToData(mx, my, rect, rngD);
+if(!drawState.pendingPoint){
+drawState.pendingPoint = dp;
+}else{
+var pp = drawState.pendingPoint;
+lines.push({
+id: drawState.nextId++,
+i1: pp.i, p1: pp.p,
+i2: dp.i, p2: dp.p,
+color: drawState.color
+});
+drawState.pendingPoint = null;
+}
+draw();
+e.preventDefault();
+return;
+}
+
+/* 2) HIT-TEST ЛИНИИ в обычном режиме */
+if(drawState.mode!=='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
+var rngHit = priceRange();
+var hit = hitTestLine(mx, my, rect, rngHit);
+if(hit){
+drawState.selectedId = hit.id;
+draw();
+return;
+}else{
+if(drawState.selectedId){
+drawState.selectedId = null;
+draw();
+}
+}
+}
+
 if(mx<rect.x||mx>rect.x+rect.w)return;
 if(my<rect.y||my>rect.y+rect.h)return;
 var rngStart=priceRange();
@@ -1171,6 +1242,30 @@ cv.style.cursor='grabbing';
 });
 
 window.addEventListener('mousemove',function(e){
+/* ПЕРЕТАСКИВАНИЕ ТОЧКИ */
+if(drawState.draggingPoint){
+var rr = cv.getBoundingClientRect();
+var mxW = e.clientX - rr.left;
+var myW = e.clientY - rr.top;
+var rectW = plotRect();
+var rngW = priceRange();
+var dpW = pxToData(mxW, myW, rectW, rngW);
+for(var li=0;li<lines.length;li++){
+if(lines[li].id === drawState.draggingPoint.lineId){
+if(drawState.draggingPoint.which === 1){
+lines[li].i1 = dpW.i;
+lines[li].p1 = dpW.p;
+}else{
+lines[li].i2 = dpW.i;
+lines[li].p2 = dpW.p;
+}
+break;
+}
+}
+draw();
+return;
+}
+
 if(dragY){
 var dy=e.clientY-dragY.startY;
 var factorY=Math.exp(dy/250);
@@ -1234,6 +1329,9 @@ window.addEventListener('mouseup',function(){
 drag=null;
 dragY=null;
 dragX=null;
+if(drawState.draggingPoint){
+drawState.draggingPoint = null;
+}
 cv.style.cursor='crosshair';
 });
 
@@ -1322,7 +1420,7 @@ startAutoRefresh();
 setInterval(function(){
 if(state.candles.length){
 refreshStatus();
-if(!drag&&!dragY&&!dragX&&!touchDrag)draw();
+if(!drag&&!dragY&&!dragX&&!touchDrag&&!drawState.draggingPoint)draw();
 }
 },1000);
 }).catch(function(e){
