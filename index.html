@@ -21,6 +21,7 @@ button:hover{border-color:var(--accent)}
 button.active{background:var(--accent);color:#111;border-color:var(--accent);font-weight:600}
 #search{width:130px}
 #ticker{max-width:180px}
+#ticker.collapsed-mode{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
 .tfs button{padding:4px 7px;min-width:36px}
 .btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
@@ -41,29 +42,13 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .color-btn.active{border-color:#fff !important;box-shadow:0 0 0 2px #000 inset}
 .draw-hint{color:var(--muted);font-size:11px;font-style:italic;margin-left:8px}
 #darvas-hint{position:absolute;bottom:28px;right:12px;font-size:10px;color:var(--muted);background:rgba(8,10,14,.78);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:2;white-space:nowrap}
-/* ===== Бэктест: модальное окно ===== */
-#bt-modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:20px;overflow:auto}
-#bt-modal.show{display:flex}
-#bt-content{background:var(--panel);border:1px solid #2a323d;border-radius:8px;padding:16px;max-width:1000px;width:100%;max-height:calc(100vh - 40px);overflow:auto}
-.bt-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
-.bt-row label{min-width:auto;color:var(--muted);font-size:12px}
-.bt-row input,.bt-row select{padding:4px 6px;font-size:12px;background:#0b0f14;color:var(--text);border:1px solid #2a323d;border-radius:6px}
-#bt-results{margin-top:16px;font-size:12px}
-.bt-table{width:100%;border-collapse:collapse;margin-top:8px}
-.bt-table th,.bt-table td{padding:5px 8px;border-bottom:1px solid #1c2230}
-.bt-table th{color:var(--muted);text-align:right;font-weight:normal;background:#0a0f16}
-.bt-table td{text-align:right;font-variant-numeric:tabular-nums}
-.bt-table th.left,.bt-table td.left{text-align:left}
-.bt-table code{font-size:10px;color:var(--accent)}
-.bt-pos{color:#26a69a}
-.bt-neg{color:#ef5350}
 </style>
 </head>
 <body>
 <div id="app">
 <header>
 <div class="row">
-<select id="ticker" title="Тикер"></select>
+<select id="ticker" title="ПКМ: свернуть/показать панели"></select>
 <input id="search" placeholder="поиск: SMLT / VKCO" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
@@ -87,9 +72,8 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <span style="color:var(--muted);font-size:11px">EMA</span>
     <input type="number" id="ema20-inline" min="1" max="1000" value="20" title="Период EMA (белая)" style="width:58px;text-align:center">
     <input type="number" id="ema200-inline" min="1" max="1000" value="200" title="Период EMA (голубая)" style="width:58px;text-align:center">
-    <button class="draw-btn" id="btn-backtest" title="Бэктест на загруженных свечах">🧪 Бэктест</button>
   </div>
-  <span class="draw-hint">ЛКМ: точка 1 → точка 2. ПКМ: вкл/выкл режим «Линия». Выделенная линия → тяни её концы. Delete: удалить.</span>
+  <span class="draw-hint">ЛКМ: точка 1 → точка 2. ПКМ: вкл/выкл «Линия». Выделенная линия → тяни концы. Delete: удалить. ПКМ по панели — скрыть.</span>
 </div>
 
 <div id="chartWrap">
@@ -98,36 +82,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40</div>
 <div id="loading">Загрузка графика…</div>
 </div>
-</div>
-
-<!-- ===== Модальное окно бэктеста ===== -->
-<div id="bt-modal">
-  <div id="bt-content">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h2 style="margin:0;font-size:16px">🧪 Бэктест (walk-forward 60/20/20)</h2>
-      <button id="bt-close" style="font-size:16px;padding:2px 8px">✕</button>
-    </div>
-    <div class="bt-row">
-      <label>Стратегия:</label>
-      <select id="bt-strategy">
-        <option value="donchian">Donchian Breakout + ATR trail</option>
-        <option value="ema-trend">EMA trend + ATR trail</option>
-        <option value="vol-spike">Volume-spike + ATR trail</option>
-      </select>
-    </div>
-    <div class="bt-row">
-      <label>Комиссия, %:</label>
-      <input type="number" id="bt-comm" value="0.04" step="0.01" min="0" style="width:80px">
-      <label>Проскальзывание, %:</label>
-      <input type="number" id="bt-slip" value="0.04" step="0.01" min="0" style="width:80px">
-      <label style="color:var(--muted);font-size:11px">(Long + Short, оба учитываются)</label>
-    </div>
-    <div class="bt-row" style="margin-top:8px">
-      <button class="draw-btn active" id="bt-run">▶ Запустить walk-forward</button>
-      <button class="draw-btn" id="bt-clear-marks">Убрать метки с графика</button>
-    </div>
-    <div id="bt-results"><p style="color:var(--muted)">Нажми «Запустить walk-forward». Данные берутся из уже загруженных свечей (state.candles).</p></div>
-  </div>
 </div>
 
 <script>
@@ -418,13 +372,66 @@ ticker:'VKCO',tfKey:'10m',candles:[],rawIss:[],ema20:[],ema200:[],
 ema20p:20,ema200p:200,
 view:{start:0,end:0},viewPx:{min:0,max:0},manualPx:false,
 loading:false,bgLoading:false,lastUpdate:0,err:'',
-db:{enabled:false,boxp:10,thickness:1,boxes:[]},
-backtestMarks:[]
+db:{enabled:false,boxp:10,thickness:1,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
 var loadGen=0;
 var memCache={};
+
+/* === Состояние видимости панелей === */
+var uiCollapse={headerCollapsed:false,drawPanelHidden:false};
+
+function applyPanelState(){
+var header=document.querySelector('header');
+var drawPanel=document.getElementById('draw-panel');
+var children=header.children;
+for(var i=0;i<children.length;i++){
+var el=children[i];
+if(el.classList.contains('row')){el.style.display='';}
+else{el.style.display=uiCollapse.headerCollapsed?'none':'';}
+}
+if(drawPanel){drawPanel.style.display=uiCollapse.drawPanelHidden?'none':'';}
+var tk=document.getElementById('ticker');
+if(tk){
+var isMinimal=uiCollapse.headerCollapsed||uiCollapse.drawPanelHidden;
+tk.classList.toggle('collapsed-mode',isMinimal);
+tk.title=isMinimal?'ПКМ: показать все панели':'ПКМ: свернуть панели (освободить место)';
+}
+requestAnimationFrame(function(){ try{resize();}catch(e){} });
+}
+
+function setupPanelToggle(){
+var header=document.querySelector('header');
+var drawPanel=document.getElementById('draw-panel');
+
+header.addEventListener('contextmenu',function(e){
+var tickerEl=e.target.closest('#ticker');
+if(tickerEl){
+e.preventDefault();
+var isMinimal=uiCollapse.headerCollapsed||uiCollapse.drawPanelHidden;
+if(isMinimal){
+uiCollapse.headerCollapsed=false;
+uiCollapse.drawPanelHidden=false;
+}else{
+uiCollapse.headerCollapsed=true;
+uiCollapse.drawPanelHidden=true;
+}
+applyPanelState();
+return;
+}
+if(e.target.closest('#search')) return;
+e.preventDefault();
+uiCollapse.headerCollapsed=!uiCollapse.headerCollapsed;
+applyPanelState();
+});
+
+drawPanel.addEventListener('contextmenu',function(e){
+e.preventDefault();
+uiCollapse.drawPanelHidden=!uiCollapse.drawPanelHidden;
+applyPanelState();
+});
+}
 
 function updateMemCache(){
 var key=state.ticker+'|'+state.tfKey;
@@ -600,282 +607,6 @@ drawState.selectedId = null; saveLines(); draw(); e.preventDefault();
 
 /* ========== КОНЕЦ РИСОВАНИЯ ========== */
 
-/* ================== БЭКТЕСТ ================== */
-var BT_COMM = 0.0004; // 0.04%
-var BT_SLIP = 0.0004; // 0.04%
-
-function btATR(candles, period){
-var n = candles.length;
-var atr = new Array(n);
-for(var i=0;i<n;i++)atr[i]=null;
-if(n<period)return atr;
-var tr = new Array(n);
-for(var i=0;i<n;i++){
-if(i===0){tr[i]=candles[i].h-candles[i].l;continue;}
-var h=candles[i].h,l=candles[i].l,pc=candles[i-1].c;
-tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));
-}
-var sum=0;
-for(var i=0;i<period;i++)sum+=tr[i];
-atr[period-1]=sum/period;
-for(var i=period;i<n;i++){
-atr[i]=(atr[i-1]*(period-1)+tr[i])/period;
-}
-return atr;
-}
-
-function btDonchian(candles, N){
-var n=candles.length;
-var hh=new Array(n),ll=new Array(n);
-for(var i=0;i<n;i++){
-if(i<N){hh[i]=null;ll[i]=null;continue;}
-var mx=-Infinity,mn=Infinity;
-for(var j=i-N;j<i;j++){
-if(candles[j].h>mx)mx=candles[j].h;
-if(candles[j].l<mn)mn=candles[j].l;
-}
-hh[i]=mx;ll[i]=mn;
-}
-return {hh:hh,ll:ll};
-}
-
-function btVolMA(candles, N){
-var n=candles.length;
-var vma=new Array(n);
-for(var i=0;i<n;i++){
-if(i<N){vma[i]=null;continue;}
-var sum=0;for(var j=i-N;j<i;j++)sum+=candles[j].v;
-vma[i]=sum/N;
-}
-return vma;
-}
-
-function btRun(candles, startIdx, endIdx, params, strategyName){
-var trades=[];var marks=[];
-var atr=btATR(candles, params.atrPeriod||14);
-var donH=null,donL=null,emaF=null,emaS=null,volMA=null;
-if(strategyName==='donchian'||strategyName==='vol-spike'){
-var don=btDonchian(candles,params.N);
-donH=don.hh;donL=don.ll;
-if(strategyName==='vol-spike')volMA=btVolMA(candles,params.volN||20);
-}else if(strategyName==='ema-trend'){
-var closes=candles.map(function(c){return c.c;});
-emaF=computeEMA(closes,params.emaFast);
-emaS=computeEMA(closes,params.emaSlow);
-}
-
-var side=0,entryPrice=0,entryIdx=0,entryTs=0,highWater=0,lowWater=0;
-var entryDonH=0,entryDonL=0;
-
-function openPos(s,price,i){
-side=s;entryPrice=price;entryIdx=i;entryTs=candles[i].t;
-highWater=price;lowWater=price;
-marks.push({type:s>0?'long-entry':'short-entry',idx:i,price:price});
-}
-function closePos(price,i){
-var gross;
-if(side>0)gross=(price-entryPrice)/entryPrice;
-else gross=(entryPrice-price)/entryPrice;
-var net=gross-2*(BT_COMM+BT_SLIP);
-trades.push({side:side,entryIdx:entryIdx,entryTs:entryTs,entryPrice:entryPrice,exitIdx:i,exitTs:candles[i].t,exitPrice:price,gross:gross,net:net});
-marks.push({type:'exit',idx:i,price:price,side:side});
-side=0;
-}
-
-for(var i=startIdx;i<endIdx;i++){
-var bar=candles[i];
-var a=atr[i];
-if(a==null)continue;
-
-if(side===0){
-if(strategyName==='donchian'||strategyName==='vol-spike'){
-var allowLong = donH[i]!=null && bar.h>donH[i];
-var allowShort = donL[i]!=null && bar.l<donL[i];
-if(strategyName==='vol-spike' && volMA[i]!=null){
-if(!(bar.v > params.volMult*volMA[i])){allowLong=false;allowShort=false;}
-}
-if(allowLong){openPos(1,Math.max(donH[i],bar.o),i);}
-else if(allowShort){openPos(-1,Math.min(donL[i],bar.o),i);}
-}else if(strategyName==='ema-trend'){
-if(emaF[i]!=null && emaS[i]!=null){
-if(emaF[i]>emaS[i] && bar.c>emaF[i])openPos(1,bar.c,i);
-else if(emaF[i]<emaS[i] && bar.c<emaF[i])openPos(-1,bar.c,i);
-}
-}
-}
-
-if(side!==0){
-if(side>0){if(bar.h>highWater)highWater=bar.h;}
-else{if(bar.l<lowWater)lowWater=bar.l;}
-
-var exited=false;
-if(side>0){
-if(strategyName==='ema-trend' && emaF[i]!=null && emaS[i]!=null && emaF[i]<emaS[i]){
-closePos(bar.c,i);exited=true;
-}else{
-var trail=highWater-params.kATR*a;
-if(bar.l<=trail){closePos(Math.min(trail,bar.o),i);exited=true;}
-}
-}else{
-if(strategyName==='ema-trend' && emaF[i]!=null && emaS[i]!=null && emaF[i]>emaS[i]){
-closePos(bar.c,i);exited=true;
-}else{
-var trail2=lowWater+params.kATR*a;
-if(bar.h>=trail2){closePos(Math.max(trail2,bar.o),i);exited=true;}
-}
-}
-}
-}
-if(side!==0)closePos(candles[endIdx-1].c,endIdx-1);
-var stats=btStats(trades);
-return {trades:trades,stats:stats,marks:marks};
-}
-
-function btStats(trades){
-var n=trades.length;
-if(n===0)return {trades:0,winrate:0,net:0,maxDD:0,pf:0,score:0};
-var wins=0,equity=100,peak=100,maxDD=0,gw=0,gl=0;
-for(var i=0;i<n;i++){
-var t=trades[i];
-if(t.net>0){wins++;gw+=t.net;}else{gl+=Math.abs(t.net);}
-equity*=(1+t.net);
-if(equity>peak)peak=equity;
-var dd=(peak-equity)/peak*100;
-if(dd>maxDD)maxDD=dd;
-}
-var net=equity-100;
-var wr=wins/n*100;
-var pf=gl>0?gw/gl:(gw>0?999:0);
-var score=net*Math.sqrt(n)/(1+maxDD/100);
-return {trades:n,winrate:wr,net:net,maxDD:maxDD,pf:pf,score:score};
-}
-
-function btCombos(strategyName, ranges){
-var keys=[],lists=[];
-for(var k in ranges){if(Array.isArray(ranges[k])){keys.push(k);lists.push(ranges[k]);}}
-var out=[];
-function rec(idx,cur){
-if(idx===keys.length){
-var combo={};
-for(var c in ranges){if(!Array.isArray(ranges[c]))combo[c]=ranges[c];}
-for(var cc in cur)combo[cc]=cur[cc];
-out.push(combo);return;
-}
-for(var i=0;i<lists[idx].length;i++){cur[keys[idx]]=lists[idx][i];rec(idx+1,cur);}
-}
-rec(0,{});
-return out;
-}
-
-function btRanges(strategyName){
-if(strategyName==='donchian')return {N:[10,15,20,25,30,40,50],kATR:[1.0,1.5,2.0,2.5,3.0],atrPeriod:14};
-if(strategyName==='ema-trend')return {emaFast:[10,20,30],emaSlow:[50,100],kATR:[1.5,2.0,2.5],atrPeriod:14};
-if(strategyName==='vol-spike')return {N:[15,20,30],volMult:[1.5,2.0,2.5,3.0],volN:20,kATR:[1.5,2.0,2.5],atrPeriod:14};
-return {};
-}
-
-function btWalkForward(candles, strategyName){
-var n=candles.length;
-var trainEnd=Math.floor(n*0.6);
-var test1End=Math.floor(n*0.8);
-var test2End=n;
-var combos=btCombos(strategyName, btRanges(strategyName));
-var results=[];
-for(var i=0;i<combos.length;i++){
-var r=btRun(candles,0,trainEnd,combos[i],strategyName);
-results.push({params:combos[i],train:r.stats});
-}
-results.sort(function(a,b){return b.train.score-a.train.score;});
-var best=results[0];
-var test1=btRun(candles,trainEnd,test1End,best.params,strategyName);
-var test2=btRun(candles,test1End,test2End,best.params,strategyName);
-var top10=[];
-for(var j=0;j<Math.min(10,results.length);j++){
-var rj=results[j];
-var t1=btRun(candles,trainEnd,test1End,rj.params,strategyName);
-var t2=btRun(candles,test1End,test2End,rj.params,strategyName);
-top10.push({params:rj.params,train:rj.train,test1:t1.stats,test2:t2.stats});
-}
-return {
-trainEnd:trainEnd, test1End:test1End, test2End:test2End,
-best:best, test1:test1, test2:test2, top10:top10, combosCount:combos.length
-};
-}
-
-function btFmt(v){
-if(v==null||!isFinite(v))return '—';
-var abs=Math.abs(v);
-return abs<10?v.toFixed(2):Math.round(v).toString();
-}
-function btCls(v){
-if(v==null||!isFinite(v))return '';
-return v>0?'bt-pos':(v<0?'bt-neg':'');
-}
-
-function renderBtResult(res){
-var html='';
-html+='<p style="color:var(--muted)">Свечей: <b>'+state.candles.length+'</b> · Train: '+res.trainEnd+' · Test1: '+(res.test1End-res.trainEnd)+' · Test2: '+(res.test2End-res.test1End)+' · Комбинаций: '+res.combosCount+'</p>';
-html+='<h3 style="margin-top:12px;font-size:14px">Лучшая комбинация (выбрана на train)</h3>';
-html+='<p><code style="color:var(--accent);font-size:11px">'+JSON.stringify(res.best.params)+'</code></p>';
-html+='<table class="bt-table"><tr><th class="left">Период</th><th>Сделок</th><th>Winrate %</th><th>Net %</th><th>MaxDD %</th><th>PF</th><th>Score</th></tr>';
-html+=row('Train (in-sample)', res.best.train);
-html+=row('Test 1 (OOS)', res.test1.stats);
-html+=row('Test 2 (final OOS)', res.test2.stats);
-html+='</table>';
-var ratio = res.best.train.net !== 0 ? (res.test1.stats.net + res.test2.stats.net) / res.best.train.net * 100 : 0;
-html+='<p style="margin-top:8px;color:var(--muted)">OOS / In-sample = <b class="'+(ratio>50?'bt-pos':(ratio>0?'':'bt-neg'))+'">'+btFmt(ratio)+'%</b> '+(ratio<30?'— сильное переобучение, мало шансов вперёд':(ratio<60?'— умеренное переобучение':'— приемлемо'))+'</p>';
-html+='<h3 style="margin-top:16px;font-size:14px">Топ-10 комбинаций</h3>';
-html+='<table class="bt-table"><tr><th class="left">Параметры</th><th>Train %</th><th>Test1 %</th><th>Test2 %</th><th>Сделок</th><th>Score</th></tr>';
-for(var i=0;i<res.top10.length;i++){
-var t=res.top10[i];
-html+='<tr>';
-html+='<td class="left"><code>'+JSON.stringify(t.params)+'</code></td>';
-html+='<td class="'+btCls(t.train.net)+'">'+btFmt(t.train.net)+'</td>';
-html+='<td class="'+btCls(t.test1.net)+'">'+btFmt(t.test1.net)+'</td>';
-html+='<td class="'+btCls(t.test2.net)+'">'+btFmt(t.test2.net)+'</td>';
-html+='<td>'+(t.train.trades+t.test1.trades+t.test2.trades)+'</td>';
-html+='<td>'+btFmt(t.train.score)+'</td>';
-html+='</tr>';
-}
-html+='</table>';
-html+='<p style="margin-top:12px;color:var(--muted);font-size:11px">Метки сделок тестового периода (Test1 + Test2) нанесены на график: ▲ зелёный — long вход, ▼ красный — short вход, ✕ — выход.</p>';
-$('#bt-results').innerHTML=html;
-}
-function row(label,s){
-return '<tr><td class="left">'+label+'</td><td>'+s.trades+'</td><td>'+btFmt(s.winrate)+'</td><td class="'+btCls(s.net)+'">'+btFmt(s.net)+'</td><td>'+btFmt(s.maxDD)+'</td><td>'+btFmt(s.pf)+'</td><td>'+btFmt(s.score)+'</td></tr>';
-}
-
-function setupBacktestUi(){
-$('#btn-backtest').addEventListener('click',function(){
-$('#bt-modal').classList.add('show');
-});
-$('#bt-close').addEventListener('click',function(){
-$('#bt-modal').classList.remove('show');
-});
-$('#bt-clear-marks').addEventListener('click',function(){
-state.backtestMarks=[];draw();
-});
-$('#bt-run').addEventListener('click',function(){
-if(!state.candles.length){alert('Свечи ещё не загружены');return;}
-BT_COMM=(parseFloat($('#bt-comm').value)||0.04)/100;
-BT_SLIP=(parseFloat($('#bt-slip').value)||0.04)/100;
-var strategy=$('#bt-strategy').value;
-$('#bt-results').innerHTML='<p>Считаю…</p>';
-setTimeout(function(){
-try{
-var res=btWalkForward(state.candles,strategy);
-renderBtResult(res);
-state.backtestMarks = res.test1.marks.concat(res.test2.marks);
-draw();
-}catch(e){
-$('#bt-results').innerHTML='<p style="color:#ef5350">Ошибка: '+esc(e.message||String(e))+'</p>';
-console.error(e);
-}
-},30);
-});
-}
-/* ================== КОНЕЦ БЭКТЕСТА ================== */
-
 function renderTickerOptions(filter){
 filter=filter||'';
 var sel=$('#ticker');
@@ -936,7 +667,6 @@ try{localStorage.setItem('db_boxp_'+state.ticker, String(v));}catch(err){}
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();
 });
 setupEmaInputs();
-setupBacktestUi();
 }
 
 function setupEmaInputs(){
@@ -1055,7 +785,6 @@ state.bgLoading=false;refreshStatus();
 function reloadChart(){
 var gen=++loadGen;
 state.err='';
-state.backtestMarks=[];
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
 var tf=TF_BY_KEY[state.tfKey];
@@ -1236,7 +965,6 @@ if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 }
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema200,EMA200_COLOR,EMA200_WIDTH);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema20,EMA20_COLOR,EMA20_WIDTH);
-if(state.backtestMarks && state.backtestMarks.length)drawBacktestMarks(rect,rng,viewStart,viewSpan);
 drawLines(rect, rng);
 var lastIdx=e;var last=c[lastIdx];var lastY=yForPrice(last.c,rect,rng);
 drawPriceTag(lastY,last.c,rect);
@@ -1248,32 +976,7 @@ ctx.fillText(label,rect.x+6,rect.y+14);
 ctx.font='11px sans-serif';
 ctx.fillStyle=EMA20_COLOR;ctx.fillText('EMA'+state.ema20p,rect.x+6,rect.y+28);
 ctx.fillStyle=EMA200_COLOR;ctx.fillText('EMA'+state.ema200p,rect.x+70,rect.y+28);
-if(state.backtestMarks && state.backtestMarks.length){
-ctx.fillStyle=getCss('--muted');ctx.fillText('Бэктест: '+state.backtestMarks.length+' меток',rect.x+150,rect.y+28);
-}
 if(hover.active)drawCrosshair(rect,rng,hover.x,hover.y);
-}
-
-function drawBacktestMarks(rect,rng,viewStart,viewSpan){
-var marks=state.backtestMarks;var slot=rect.w/viewSpan;
-for(var i=0;i<marks.length;i++){
-var m=marks[i];
-if(m.idx < viewStart-1 || m.idx > viewStart+viewSpan+1)continue;
-var x=rect.x+(m.idx-viewStart+0.5)*slot;
-var y=yForPrice(m.price,rect,rng);
-ctx.save();
-if(m.type==='long-entry'){
-ctx.fillStyle='#26a69a';
-ctx.beginPath();ctx.moveTo(x,y+10);ctx.lineTo(x-6,y+20);ctx.lineTo(x+6,y+20);ctx.closePath();ctx.fill();
-}else if(m.type==='short-entry'){
-ctx.fillStyle='#ef5350';
-ctx.beginPath();ctx.moveTo(x,y-10);ctx.lineTo(x-6,y-20);ctx.lineTo(x+6,y-20);ctx.closePath();ctx.fill();
-}else if(m.type==='exit'){
-ctx.strokeStyle=m.side>0?'#26a69a':'#ef5350';ctx.lineWidth=2;
-ctx.beginPath();ctx.moveTo(x-5,y-5);ctx.lineTo(x+5,y+5);ctx.moveTo(x+5,y-5);ctx.lineTo(x-5,y+5);ctx.stroke();
-}
-ctx.restore();
-}
 }
 
 function drawEMA(rect,rng,viewStart,viewEnd,viewSpan,arr,color,width){
@@ -1588,6 +1291,7 @@ $('#ohlc').style.display='none';draw();
 function init(){
 setupUi();
 setupDrawUi();
+setupPanelToggle();
 loadDbSettings();
 loadEmaSettings();
 resize();
