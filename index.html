@@ -35,6 +35,16 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #ohlc span{color:var(--muted)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(8,10,14,.6);pointer-events:none}
 #loading.hide{display:none}
+/* Панель рисования */
+#draw-panel{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 8px;background:var(--panel);border-bottom:1px solid var(--grid);font-size:12px;z-index:4}
+.draw-btn{padding:4px 10px !important;font-size:12px}
+.draw-btn.active{background:var(--accent) !important;color:#111 !important;border-color:var(--accent) !important}
+.color-swatches{display:flex;gap:3px;padding:2px;background:#0b0f14;border:1px solid #2a323d;border-radius:6px}
+.color-btn{width:22px;height:22px;padding:0 !important;border:2px solid transparent !important;border-radius:4px;cursor:pointer;outline:none}
+.color-btn.active{border-color:#fff !important;box-shadow:0 0 0 2px #000 inset}
+.draw-hint{color:var(--muted);font-size:11px;font-style:italic;margin-left:auto}
+/* Подсказка с дефолтными Darvas в углу графика */
+#darvas-hint{position:absolute;bottom:28px;right:12px;font-size:10px;color:var(--muted);background:rgba(8,10,14,.78);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:2;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -50,9 +60,25 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="status">Загрузка…</div>
 </header>
 
+<div id="draw-panel">
+  <button class="draw-btn" id="btn-draw-line" title="Режим рисования линии (клик → клик)">✏ Линия</button>
+  <div class="color-swatches" id="color-swatches">
+    <button class="color-btn active" data-color="#ffeb3b" style="background:#ffeb3b" title="Жёлтый"></button>
+    <button class="color-btn" data-color="#2196f3" style="background:#2196f3" title="Синий"></button>
+    <button class="color-btn" data-color="#4caf50" style="background:#4caf50" title="Зелёный"></button>
+    <button class="color-btn" data-color="#f44336" style="background:#f44336" title="Красный"></button>
+    <button class="color-btn" data-color="#ffffff" style="background:#ffffff" title="Белый"></button>
+    <button class="color-btn" data-color="#ff9800" style="background:#ff9800" title="Оранжевый"></button>
+  </div>
+  <button class="draw-btn" id="btn-delete-line" title="Удалить выделенную линию (или клавиша Delete)">🗑 Удалить</button>
+  <button class="draw-btn" id="btn-clear-lines" title="Удалить все линии">✕ Очистить</button>
+  <span class="draw-hint">Клик → точка 1, клик → точка 2. Клик на линии → выделить. Delete → удалить.</span>
+</div>
+
 <div id="chartWrap">
 <canvas id="cv"></canvas>
 <div id="ohlc"></div>
+<div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40</div>
 <div id="loading">Загрузка графика…</div>
 </div>
 </div>
@@ -81,7 +107,7 @@ AFKS:30,
 X5:33,
 FIVE:33,
 OZON:39,
-SMLT:40 // Добавлено: Самолёт = 40
+SMLT:40
 };
 
 var TF_LIST=[
@@ -335,6 +361,150 @@ db:{enabled:false,boxp:10,thickness:1,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
+
+/* ========== РИСОВАНИЕ ЛИНИЙ ========== */
+var drawState={
+mode:null,            // null | 'line'
+color:'#ffeb3b',
+pendingPoint:null,    // {i, p} — первая точка
+selectedId:null,      // id выделенной линии
+nextId:1
+};
+var lines=[];         // [{id, i1, p1, i2, p2, color}]
+
+function updateDrawUi(){
+$('#btn-draw-line').classList.toggle('active', drawState.mode === 'line');
+}
+
+function pxToData(px, py, rect, rng){
+var viewSpan = Math.max(1, state.view.end - state.view.start);
+var i = state.view.start + ((px - rect.x) / rect.w) * viewSpan;
+var p = priceForY(py, rect, rng);
+return {i: i, p: p};
+}
+
+function pointToSegmentDist(px, py, x1, y1, x2, y2){
+var dx = x2 - x1, dy = y2 - y1;
+var len2 = dx*dx + dy*dy;
+if(len2 === 0) return Math.hypot(px - x1, py - y1);
+var t = Math.max(0, Math.min(1, ((px - x1)*dx + (py - y1)*dy) / len2));
+var px2 = x1 + t*dx, py2 = y1 + t*dy;
+return Math.hypot(px - px2, py - py2);
+}
+
+function hitTestLine(px, py, rect, rng){
+var viewSpan = Math.max(1, state.view.end - state.view.start);
+for(var i=lines.length-1;i>=0;i--){
+var ln = lines[i];
+var x1 = rect.x + (ln.i1 - state.view.start) / viewSpan * rect.w;
+var y1 = yForPrice(ln.p1, rect, rng);
+var x2 = rect.x + (ln.i2 - state.view.start) / viewSpan * rect.w;
+var y2 = yForPrice(ln.p2, rect, rng);
+if(pointToSegmentDist(px, py, x1, y1, x2, y2) < 8) return ln;
+}
+return null;
+}
+
+function drawLines(rect, rng){
+var viewStart = state.view.start;
+var viewSpan = Math.max(1, state.view.end - viewStart);
+
+for(var i=0;i<lines.length;i++){
+var ln = lines[i];
+var x1 = rect.x + (ln.i1 - viewStart) / viewSpan * rect.w;
+var y1 = yForPrice(ln.p1, rect, rng);
+var x2 = rect.x + (ln.i2 - viewStart) / viewSpan * rect.w;
+var y2 = yForPrice(ln.p2, rect, rng);
+
+var isSel = (ln.id === drawState.selectedId);
+
+ctx.save();
+ctx.strokeStyle = ln.color;
+ctx.lineWidth = isSel ? 3 : 2;
+ctx.beginPath();
+ctx.moveTo(x1, y1);
+ctx.lineTo(x2, y2);
+ctx.stroke();
+
+if(isSel){
+ctx.fillStyle = ln.color;
+ctx.beginPath();ctx.arc(x1, y1, 5, 0, Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(x2, y2, 5, 0, Math.PI*2);ctx.fill();
+}
+ctx.restore();
+}
+
+/* Превью текущей рисуемой линии */
+if(drawState.mode === 'line' && drawState.pendingPoint && hover.active && hover.inPlot){
+var pp = drawState.pendingPoint;
+var x1 = rect.x + (pp.i - viewStart) / viewSpan * rect.w;
+var y1 = yForPrice(pp.p, rect, rng);
+
+ctx.save();
+ctx.strokeStyle = drawState.color;
+ctx.lineWidth = 2;
+ctx.setLineDash([5, 5]);
+ctx.beginPath();
+ctx.moveTo(x1, y1);
+ctx.lineTo(hover.x, hover.y);
+ctx.stroke();
+ctx.restore();
+
+ctx.save();
+ctx.fillStyle = drawState.color;
+ctx.beginPath();
+ctx.arc(x1, y1, 4, 0, Math.PI*2);
+ctx.fill();
+ctx.restore();
+}
+}
+
+function setupDrawUi(){
+$('#btn-draw-line').addEventListener('click', function(){
+drawState.mode = (drawState.mode === 'line') ? null : 'line';
+drawState.pendingPoint = null;
+updateDrawUi();
+draw();
+});
+
+var cbtns = document.querySelectorAll('.color-btn');
+for(var i=0;i<cbtns.length;i++){
+cbtns[i].addEventListener('click', function(e){
+var cbs = document.querySelectorAll('.color-btn');
+for(var j=0;j<cbs.length;j++)cbs[j].classList.remove('active');
+e.target.classList.add('active');
+drawState.color = e.target.dataset.color;
+});
+}
+
+$('#btn-delete-line').addEventListener('click', function(){
+if(drawState.selectedId){
+lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
+drawState.selectedId = null;
+draw();
+}
+});
+
+$('#btn-clear-lines').addEventListener('click', function(){
+if(lines.length && confirm('Удалить все линии?')){
+lines = [];
+drawState.selectedId = null;
+draw();
+}
+});
+
+window.addEventListener('keydown', function(e){
+if(e.key !== 'Delete' && e.key !== 'Backspace') return;
+if(document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) return;
+if(!drawState.selectedId) return;
+lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
+drawState.selectedId = null;
+draw();
+e.preventDefault();
+});
+}
+
+/* ========== КОНЕЦ РИСОВАНИЯ ========== */
 
 function renderTickerOptions(filter){
 filter=filter||'';
@@ -678,6 +848,9 @@ if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema200,EMA200_COLOR,EMA200_WIDTH);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema20,EMA20_COLOR,EMA20_WIDTH);
 
+/* Рисованные линии пользователя — поверх свечей и EMA */
+drawLines(rect, rng);
+
 var lastIdx=e;
 var last=c[lastIdx];
 var lastY=yForPrice(last.c,rect,rng);
@@ -798,12 +971,13 @@ ctx.fillStyle=getCss('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='le
 ctx.fillText(fmtNum(p),axisX+4,y+4);ctx.restore();
 }
 
-var hover={active:false,x:0,y:0};
+var hover={active:false,x:0,y:0,inPlot:false};
 
 function updateCursor(mx,my){
 if(dragY){cv.style.cursor='ns-resize';return;}
 if(dragX){cv.style.cursor='ew-resize';return;}
 if(drag){cv.style.cursor='grabbing';return;}
+if(drawState.mode==='line'){cv.style.cursor='crosshair';return;}
 var rect=plotRect();
 var axisX=priceAxisX(rect);
 if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){cv.style.cursor='ns-resize';return;}
@@ -815,12 +989,14 @@ cv.addEventListener('mousemove',function(e){
 var r=cv.getBoundingClientRect();
 var mx=e.clientX-r.left;
 var my=e.clientY-r.top;
+var rect=plotRect();
 hover.active=true;hover.x=mx;hover.y=my;
+hover.inPlot = (mx >= rect.x && mx <= rect.x + rect.w && my >= rect.y && my <= rect.y + rect.h);
 updateHoverCandle();draw();
 updateCursor(mx,my);
 });
 cv.addEventListener('mouseleave',function(){
-hover.active=false;$('#ohlc').style.display='none';draw();
+hover.active=false;hover.inPlot=false;$('#ohlc').style.display='none';draw();
 cv.style.cursor='crosshair';
 });
 
@@ -913,6 +1089,42 @@ var mx=e.clientX-r.left;
 var my=e.clientY-r.top;
 var rect=plotRect();
 var axisX=priceAxisX(rect);
+
+/* 0) РЕЖИМ РИСОВАНИЯ ЛИНИИ */
+if(drawState.mode==='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
+var rngD = priceRange();
+var dp = pxToData(mx, my, rect, rngD);
+if(!drawState.pendingPoint){
+drawState.pendingPoint = dp;
+}else{
+var pp = drawState.pendingPoint;
+lines.push({
+id: drawState.nextId++,
+i1: pp.i, p1: pp.p,
+i2: dp.i, p2: dp.p,
+color: drawState.color
+});
+drawState.pendingPoint = null;
+}
+draw();
+e.preventDefault();
+return;
+}
+
+/* 0.5) HIT-TEST ЛИНИИ в обычном режиме */
+if(drawState.mode!=='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
+var rngHit = priceRange();
+var hit = hitTestLine(mx, my, rect, rngHit);
+if(hit){
+drawState.selectedId = hit.id;
+draw();
+}else{
+if(drawState.selectedId){
+drawState.selectedId = null;
+draw();
+}
+}
+}
 
 if(mx>=axisX && my>=rect.y && my<=rect.y+rect.h){
 var rng=priceRange();
@@ -1093,6 +1305,7 @@ $('#ohlc').style.display='none';draw();
 
 function init(){
 setupUi();
+setupDrawUi();
 loadDbSettings();
 resize();
 window.addEventListener('resize',resize);
