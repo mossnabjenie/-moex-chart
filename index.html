@@ -24,9 +24,7 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 .tfs{display:flex;gap:4px;flex-wrap:wrap}
 .tfs button{padding:4px 7px;min-width:36px}
 .btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
-/* Активная кнопка Darvas Box — СЕРАЯ, чтобы не отвлекать */
 .btn-db-main.active{background:linear-gradient(135deg,#4a525e,#333a44) !important;color:#e6ebf2 !important;border-color:#5a6470 !important}
-/* Инлайн-поле длины бокса рядом с кнопкой */
 #db-len-inline{width:52px !important;text-align:center;padding:5px 4px !important;font-weight:600}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
 #chartWrap{position:relative;flex:1;min-height:0}
@@ -35,7 +33,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 #ohlc span{color:var(--muted)}
 #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:15px;background:rgba(8,10,14,.6);pointer-events:none}
 #loading.hide{display:none}
-/* Панель рисования */
 #draw-panel{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 8px;background:var(--panel);border-bottom:1px solid var(--grid);font-size:12px;z-index:4}
 .draw-btn{padding:4px 10px !important;font-size:12px}
 .draw-btn.active{background:var(--accent) !important;color:#111 !important;border-color:var(--accent) !important}
@@ -43,7 +40,6 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 .color-btn{width:22px;height:22px;padding:0 !important;border:2px solid transparent !important;border-radius:4px;cursor:pointer;outline:none}
 .color-btn.active{border-color:#fff !important;box-shadow:0 0 0 2px #000 inset}
 .draw-hint{color:var(--muted);font-size:11px;font-style:italic;margin-left:8px}
-/* Подсказка с дефолтными Darvas в углу графика */
 #darvas-hint{position:absolute;bottom:28px;right:12px;font-size:10px;color:var(--muted);background:rgba(8,10,14,.78);padding:2px 6px;border-radius:4px;pointer-events:none;z-index:2;white-space:nowrap}
 </style>
 </head>
@@ -101,10 +97,9 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
-/* --- ДОБАВЛЕН SMLT (Самолёт) пятым --- */
 var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
 
-/* Автоматические значения длины Darvas Box по тикеру (для 10м) */
+/* === ЖЁСТКАЯ ТАБЛИЦА Darvas (главный источник значений для этих тикеров) === */
 var DB_DEFAULTS={
 VKCO:24,
 AFKS:30,
@@ -132,7 +127,6 @@ var PAGE_SIZE=500;
 var MSK_OFFSET=3*3600*1000;
 var END_HOUR_MSK=23,END_MIN_MSK=50;
 
-/* EMA: белая EMA20 (#ffffff) и голубая EMA200 (#00bcd4) */
 var EMA20_COLOR='#ffffff';
 var EMA20_WIDTH=1.5;
 var EMA200_COLOR='#00bcd4';
@@ -153,11 +147,12 @@ for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)
 return 1000;
 }
 
-/* Возвращает длину бокса для тикера:
-   1) ручная настройка пользователя для этого тикера (localStorage)
-   2) дефолт из DB_DEFAULTS
-   3) 10 (общий дефолт) */
+/* ЖЁСТКАЯ привязка:
+   1) DB_DEFAULTS — высший приоритет (значение не сбивается никогда)
+   2) localStorage — только для тикеров вне таблицы
+   3) 10 — общий дефолт */
 function getBoxpForTicker(ticker){
+if(DB_DEFAULTS[ticker]) return DB_DEFAULTS[ticker];
 try{
 var stored=localStorage.getItem('db_boxp_'+ticker);
 if(stored){
@@ -165,7 +160,6 @@ var n=parseInt(stored,10);
 if(n>=2&&n<=200)return n;
 }
 }catch(e){}
-if(DB_DEFAULTS[ticker])return DB_DEFAULTS[ticker];
 return 10;
 }
 
@@ -366,19 +360,20 @@ db:{enabled:false,boxp:10,thickness:1,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
+/* поколение загрузок: последний запрос побеждает, старые ответы отбрасываются */
+var loadGen=0;
 
 /* ========== РИСОВАНИЕ ЛИНИЙ ========== */
 var drawState={
-mode:null,            // null | 'line'
+mode:null,
 color:'#ffeb3b',
-pendingPoint:null,    // {i, p} — первая точка недостроенной линии
-selectedId:null,      // id выделенной линии
-draggingPoint:null,   // {lineId, which: 1|2} — тащим точку выделенной линии
+pendingPoint:null,
+selectedId:null,
+draggingPoint:null,
 nextId:1
 };
-var lines=[];         // [{id, i1, p1, i2, p2, color}]
+var lines=[];
 
-/* --- Персистентность линий (по тикеру, по времени свечи) --- */
 function linesStorageKey(ticker){return 'moex_lines_v2_'+ticker;}
 
 function nearestCandleTime(i){
@@ -480,8 +475,6 @@ if(pointToSegmentDist(px, py, x1, y1, x2, y2) < 8) return ln;
 return null;
 }
 
-/* Хит-тест только по КОНЕЧНЫМ ТОЧКАМ ВЫДЕЛЕННОЙ линии.
-   Возвращает {line, which: 1|2} или null. */
 function hitTestPoint(px, py, rect, rng){
 if(!drawState.selectedId) return null;
 var viewSpan = Math.max(1, state.view.end - state.view.start);
@@ -535,7 +528,6 @@ if(y2>=rect.y && y2<=rect.y+rect.h) drawAxisTag(rect, y2, ln.p2, '#7d8694', '#0b
 }
 }
 
-/* Превью текущей рисуемой линии */
 if(drawState.mode === 'line' && drawState.pendingPoint && hover.active && hover.inPlot){
 var pp = drawState.pendingPoint;
 var x1 = rect.x + (pp.i - viewStart) / viewSpan * rect.w;
@@ -626,28 +618,36 @@ var b=e.target.closest('button[data-tf]');
 if(!b)return;
 var key=b.dataset.tf;
 if(key===state.tfKey)return;
-/* сохраняем линии до смены ТФ (индексы пересчитаем по timestamp) */
 saveLines();
 state.tfKey=key;
 var btns=tfs.querySelectorAll('button');
 for(var i=0;i<btns.length;i++){btns[i].classList.toggle('active',btns[i].dataset.tf===key);}
 reloadChart();
 });
+
 $('#ticker').addEventListener('change',function(e){
-/* сохраняем линии СТАРОГО тикера, пока state.ticker ещё старый */
 saveLines();
 state.ticker=e.target.value;
+/* Мгновенно синхронизируем поле длины бокса на дефолт этого тикера */
+state.db.boxp = getBoxpForTicker(state.ticker);
+$('#db-len-inline').value = state.db.boxp;
 reloadChart();
 });
 $('#search').addEventListener('input',function(e){renderTickerOptions(e.target.value);});
 $('#search').addEventListener('keydown',function(e){
 if(e.key==='Enter'){
 var first=$('#ticker').options[0];
-if(first){saveLines();$('#ticker').value=first.value;state.ticker=first.value;reloadChart();}
+if(first){
+saveLines();
+$('#ticker').value=first.value;
+state.ticker=first.value;
+state.db.boxp = getBoxpForTicker(state.ticker);
+$('#db-len-inline').value = state.db.boxp;
+reloadChart();
+}
 }
 });
 
-/* Кнопка Darvas — вкл/выкл отображение боксов */
 $('#btn-db').addEventListener('click',function(){
 state.db.enabled=!state.db.enabled;
 saveDbSettings();
@@ -657,8 +657,18 @@ else{state.db.boxes=[];}
 draw();
 });
 
-/* Инлайн-поле длины бокса — сохраняется ПЕРСОНАЛЬНО для текущего тикера */
+/* Изменение поля длины бокса: применяется только для тикеров БЕЗ дефолта.
+   Для VKCO/AFKS/X5/OZON/SMLT поле всегда возвращается к дефолту. */
 $('#db-len-inline').addEventListener('change',function(e){
+if(DB_DEFAULTS[state.ticker]){
+/* жёсткая привязка — не позволяем переопределять */
+var fixed = DB_DEFAULTS[state.ticker];
+e.target.value = fixed;
+state.db.boxp = fixed;
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
+draw();
+return;
+}
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
 e.target.value=v;
@@ -670,7 +680,6 @@ if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
 
-/* Поля периодов EMA — значения сохраняются глобально */
 setupEmaInputs();
 }
 
@@ -782,22 +791,24 @@ var tf=TF_BY_KEY[state.tfKey];
 state.candles=aggregate(merged,tf.agg);
 }
 
+/* === Перезагрузка: generation-токен, последний запрос побеждает === */
 function reloadChart(){
-if(state.loading)return;
-
-/* АВТОВЫСТАВЛЕНИЕ длины Darvas для выбранного тикера.
-   Приоритет: ручная настройка (localStorage) > дефолт для тикера > 10. */
-state.db.boxp=getBoxpForTicker(state.ticker);
-$('#db-len-inline').value=state.db.boxp;
-
-state.loading=true;
+var gen=++loadGen;
 state.err='';
+state.loading=true;
 $('#loading').classList.remove('hide');
+
+/* Жёстко синхронизируем поле длины бокса с дефолтом этого тикера */
+state.db.boxp = getBoxpForTicker(state.ticker);
+$('#db-len-inline').value = state.db.boxp;
+
 var tf=TF_BY_KEY[state.tfKey];
 setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' …');
 loadAll(state.ticker,tf,MAX_CANDLES,function(n){
+if(gen!==loadGen)return;
 setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' · '+n+' св. …');
 }).then(function(raw){
+if(gen!==loadGen)return;
 if(!raw.length)throw new Error('Нет данных по '+state.ticker);
 state.rawIss=raw;
 state.candles=aggregate(raw,tf.agg);
@@ -808,14 +819,15 @@ state.manualPx=false;
 state.viewPx={min:0,max:0};
 state.lastUpdate=Date.now();
 recomputeIndicators();
-/* восстанавливаем нарисованные линии для этого тикера (по timestamp) */
 loadLinesForTicker(state.ticker);
 refreshStatus();
 }).catch(function(e){
+if(gen!==loadGen)return;
 state.err=(e&&e.message)?e.message:String(e);
 refreshStatus();
 console.error(e);
 }).then(function(){
+if(gen!==loadGen)return;
 state.loading=false;
 $('#loading').classList.add('hide');
 draw();
@@ -825,14 +837,20 @@ draw();
 function startAutoRefresh(){stopAutoRefresh();refreshTimer=setInterval(autoRefresh,REFRESH_MS);}
 function stopAutoRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
 
+/* === Автообновление: отбрасываем стухшие ответы, если тикер/ТФ сменились === */
 function autoRefresh(){
 if(state.loading||!state.candles.length)return;
 if(drag||dragX||dragY||touchDrag||pinch||drawState.draggingPoint)return;
+
+var tickerAtStart=state.ticker;
+var tfKeyAtStart=state.tfKey;
 var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end===oldLen-1);
 var visibleCount=state.view.end-state.view.start;
+
 loadTail(state.ticker,tf,600).then(function(raw){
+if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart) return;
 if(!raw.length)return;
 mergeTail(raw);
 var newLen=state.candles.length;
@@ -849,6 +867,7 @@ state.err='';
 refreshStatus();
 draw();
 }).catch(function(e){
+if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart) return;
 state.err=(e&&e.message)?e.message:String(e);
 refreshStatus();
 });
@@ -858,7 +877,6 @@ var cv=$('#cv');
 var ctx=cv.getContext('2d');
 var DPR=Math.min(window.devicePixelRatio||1,2);
 var cssW=0,cssH=0;
-/* paddingRight=40 (~1 см) — больше нет "чёрной пустоты" между свечами и шкалой цен */
 var LAYOUT={right:62,bottom:22,left:6,top:10,paddingRight:40};
 
 function resize(){
@@ -989,16 +1007,12 @@ if(bw>=2)ctx.fillRect(cx-bw/2,top,bw,hh);else ctx.fillRect(cx,top,1,hh);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema200,EMA200_COLOR,EMA200_WIDTH);
 drawEMA(rect,rng,viewStart,viewEnd,viewSpan,state.ema20,EMA20_COLOR,EMA20_WIDTH);
 
-/* Рисованные линии пользователя — поверх свечей и EMA */
 drawLines(rect, rng);
 
 var lastIdx=e;
 var last=c[lastIdx];
 var lastY=yForPrice(last.c,rect,rng);
-var axisX=priceAxisX(rect);
 
-/* УБРАНА белая пунктирная линия текущей цены.
-   Остаётся только ценник (price tag) на правой оси. */
 drawPriceTag(lastY,last.c,rect);
 
 ctx.font='12px sans-serif';ctx.textAlign='left';
@@ -1049,7 +1063,6 @@ var yTop=yForPrice(b.top,rect,rng);
 var yBottom=yForPrice(b.bottom,rect,rng);
 var lastC=state.candles[b.right].c;
 var r,g,bl;
-/* Цвета боксов: зелёный / красный / жёлтый */
 if(lastC>b.top){r=32;g=188;bl=34;}
 else if(lastC<b.bottom){r=255;g=25;bl=25;}
 else{r=255;g=181;bl=34;}
@@ -1093,7 +1106,6 @@ ctx.fillText(label,x,rect.y+rect.h+14);
 ctx.restore();
 }
 
-/* Универсальный ярлычок на шкале цен */
 function drawAxisTag(rect,y,price,bg,fg){
 var x=priceAxisX(rect);
 ctx.save();
@@ -1133,7 +1145,6 @@ if(drag){cv.style.cursor='grabbing';return;}
 var rect=plotRect();
 var axisX=priceAxisX(rect);
 
-/* над точкой выделенной линии — курсор "grab" */
 if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
 var rngP = priceRange();
 if(hitTestPoint(mx, my, rect, rngP)){cv.style.cursor='grab';return;}
@@ -1163,20 +1174,17 @@ cv.style.cursor='crosshair';
 /* ПКМ — ВКЛ/ВЫКЛ режима «Линия» (и отмена недостроенной точки) */
 cv.addEventListener('contextmenu',function(e){
 e.preventDefault();
-/* 1) Если есть первая точка, но вторая не поставлена — отменяем линию */
 if(drawState.pendingPoint){
 drawState.pendingPoint = null;
 draw();
 return;
 }
-/* 2) Если активен режим рисования — выключаем */
 if(drawState.mode === 'line'){
 drawState.mode = null;
 updateDrawUi();
 draw();
 return;
 }
-/* 3) Иначе — ВКЛЮЧАЕМ режим рисования (снимаем выделение) */
 drawState.mode = 'line';
 drawState.selectedId = null;
 updateDrawUi();
@@ -1267,7 +1275,6 @@ var dragY=null;
 var dragX=null;
 
 cv.addEventListener('mousedown',function(e){
-/* ЛКМ только — правый клик обрабатывается в contextmenu */
 if(e.button!==0)return;
 
 var r=cv.getBoundingClientRect();
@@ -1276,7 +1283,6 @@ var my=e.clientY-r.top;
 var rect=plotRect();
 var axisX=priceAxisX(rect);
 
-/* 0) ПЕРЕТАСКИВАНИЕ КОНЕЧНОЙ ТОЧКИ ВЫДЕЛЕННОЙ ЛИНИИ */
 if(mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h && drawState.selectedId){
 var rngPoint = priceRange();
 var hitPt = hitTestPoint(mx, my, rect, rngPoint);
@@ -1318,7 +1324,6 @@ e.preventDefault();
 return;
 }
 
-/* 1) РЕЖИМ РИСОВАНИЯ ЛИНИИ */
 if(drawState.mode==='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
 var rngD = priceRange();
 var dp = pxToData(mx, my, rect, rngD);
@@ -1340,7 +1345,6 @@ e.preventDefault();
 return;
 }
 
-/* 2) HIT-TEST ЛИНИИ в обычном режиме */
 if(drawState.mode!=='line' && mx>=rect.x && mx<=rect.x+rect.w && my>=rect.y && my<=rect.y+rect.h){
 var rngHit = priceRange();
 var hit = hitTestLine(mx, my, rect, rngHit);
@@ -1372,7 +1376,6 @@ cv.style.cursor='grabbing';
 });
 
 window.addEventListener('mousemove',function(e){
-/* ПЕРЕТАСКИВАНИЕ ТОЧКИ */
 if(drawState.draggingPoint){
 var rr = cv.getBoundingClientRect();
 var mxW = e.clientX - rr.left;
@@ -1461,7 +1464,6 @@ dragY=null;
 dragX=null;
 if(drawState.draggingPoint){
 drawState.draggingPoint = null;
-/* сохраняем положение линии после перетаскивания точки */
 saveLines();
 }
 cv.style.cursor='crosshair';
@@ -1547,10 +1549,26 @@ else if(securities.some(function(s){return s.sec==='SBER';})){state.ticker='SBER
 else if(securities.length){state.ticker=securities[0].sec;}
 renderTickerOptions();
 $('#ticker').value=state.ticker;
+state.db.boxp=getBoxpForTicker(state.ticker);
+$('#db-len-inline').value=state.db.boxp;
 return reloadChart();
 }).then(function(){
 startAutoRefresh();
 setInterval(function(){
+/* Страховка: если поле длины бокса отклонилось от дефолта — возвращаем.
+   Не трогаем, пока пользователь сам редактирует поле. */
+var elDb=document.getElementById('db-len-inline');
+if(elDb && document.activeElement!==elDb){
+var expected=getBoxpForTicker(state.ticker);
+if(state.db.boxp!==expected){
+state.db.boxp=expected;
+elDb.value=expected;
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
+draw();
+}else if(parseInt(elDb.value,10)!==expected){
+elDb.value=expected;
+}
+}
 if(state.candles.length){
 refreshStatus();
 if(!drag&&!dragY&&!dragX&&!touchDrag&&!drawState.draggingPoint)draw();
