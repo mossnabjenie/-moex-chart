@@ -99,7 +99,7 @@ var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.c
 
 var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
 
-/* === ЖЁСТКАЯ ТАБЛИЦА Darvas (главный источник значений для этих тикеров) === */
+/* ЖЁСТКАЯ ТАБЛИЦА Darvas — главный источник значений для этих тикеров */
 var DB_DEFAULTS={
 VKCO:24,
 AFKS:30,
@@ -122,8 +122,12 @@ var TF_LIST=[
 ];
 var TF_BY_KEY={};TF_LIST.forEach(function(t){TF_BY_KEY[t.key]=t;});
 var REFRESH_MS=12000;
-var MAX_CANDLES=10000;
+var MAX_CANDLES=4000;         /* ← A: уменьшено с 10000 → 4000 */
+var TAIL_CANDLES=800;          /* ← B: первая быстрая порция свечей для мгновенного рендера */
 var PAGE_SIZE=500;
+var PARALLEL_BATCH=4;          /* ← E: сколько страниц тянем параллельно */
+var MEM_CACHE_MAX=8;           /* ← C: сколько пар тикер|ТФ держим в памяти */
+var MEM_CACHE_FRESH_MS=300000; /* 5 минут — если кэш свежее, фон только хвост */
 var MSK_OFFSET=3*3600*1000;
 var END_HOUR_MSK=23,END_MIN_MSK=50;
 
@@ -147,10 +151,7 @@ for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)
 return 1000;
 }
 
-/* ЖЁСТКАЯ привязка:
-   1) DB_DEFAULTS — высший приоритет (значение не сбивается никогда)
-   2) localStorage — только для тикеров вне таблицы
-   3) 10 — общий дефолт */
+/* Жёсткая привязка: DB_DEFAULTS > localStorage > 10 */
 function getBoxpForTicker(ticker){
 if(DB_DEFAULTS[ticker]) return DB_DEFAULTS[ticker];
 try{
@@ -210,32 +211,53 @@ if(tf.iss===31)return 1/22;
 return 480/(tf.iss*(tf.agg||1));
 }
 
+/* === E: Параллельная загрузка страниц (батчами по PARALLEL_BATCH) === */
 function fetchRangeReverse(ticker, tf, fromStr, tillStr, maxRows){
-var all=[],start=0,guard=0;
-function step(){
-if(all.length>=maxRows)return Promise.resolve(all);
-if(guard++>=400)return Promise.resolve(all);
+var all=[];
+function fetchPage(start){
 var url=BASE+'/securities/'+encodeURIComponent(ticker)+'/candles.json'
 +'?interval='+tf.iss+'&from='+fromStr+'&till='+tillStr
 +'&start='+start+'&iss.reverse=true&iss.meta=off';
-return fetchJson(url).then(function(j){
-var c=j.candles;
-if(!c||!Array.isArray(c.data)||c.data.length===0)return all;
+return fetchJson(url).then(function(j){return j.candles;}).catch(function(){return null;});
+}
+function parsePage(c){
+if(!c||!Array.isArray(c.data)||c.data.length===0)return [];
 var cols=c.columns||[];
 var iO=cols.indexOf('open'),iC=cols.indexOf('close'),iH=cols.indexOf('high'),
 iL=cols.indexOf('low'),iV=cols.indexOf('volume'),iB=cols.indexOf('begin');
+var out=[];
 for(var i=0;i<c.data.length;i++){
 var r=c.data[i];
 var ts=moexToMs(r.at(iB));
 if(!isFinite(ts))continue;
-all.push({t:ts,o:+r.at(iO),c:+r.at(iC),h:+r.at(iH),l:+r.at(iL),v:+r.at(iV)||0});
+out.push({t:ts,o:+r.at(iO),c:+r.at(iC),h:+r.at(iH),l:+r.at(iL),v:+r.at(iV)||0});
 }
-if(c.data.length<PAGE_SIZE)return all;
-start+=PAGE_SIZE;
-return step();
+return out;
+}
+/* Первый запрос — один, чтобы быстро оценить наличие данных */
+return fetchPage(0).then(function(firstPage){
+var parsed=parsePage(firstPage);
+for(var i=0;i<parsed.length;i++)all.push(parsed[i]);
+if(!firstPage || !firstPage.data || firstPage.data.length<PAGE_SIZE)return all;
+if(all.length>=maxRows)return all;
+function wave(startOffset){
+var starts=[];
+for(var k=0;k<PARALLEL_BATCH;k++) starts.push(startOffset+k*PAGE_SIZE);
+return Promise.all(starts.map(fetchPage)).then(function(pages){
+var anyFull=false;
+for(var i=0;i<pages.length;i++){
+var p=pages[i];
+var parsed2=parsePage(p);
+for(var j=0;j<parsed2.length;j++)all.push(parsed2[j]);
+if(p && p.data && p.data.length>=PAGE_SIZE)anyFull=true;
+}
+if(all.length>=maxRows)return all;
+if(!anyFull)return all;
+return wave(startOffset+PARALLEL_BATCH*PAGE_SIZE);
 });
 }
-return step();
+return wave(PAGE_SIZE);
+});
 }
 
 function loadAll(ticker, tf, targetMax, onProgress){
@@ -355,13 +377,30 @@ var state={
 ticker:'VKCO',tfKey:'10m',candles:[],rawIss:[],ema20:[],ema200:[],
 ema20p:20,ema200p:200,
 view:{start:0,end:0},viewPx:{min:0,max:0},manualPx:false,
-loading:false,lastUpdate:0,err:'',
+loading:false,bgLoading:false,lastUpdate:0,err:'',
 db:{enabled:false,boxp:10,thickness:1,boxes:[]}
 };
 var securities=[];
 var refreshTimer=null;
-/* поколение загрузок: последний запрос побеждает, старые ответы отбрасываются */
 var loadGen=0;
+
+/* === C: кэш в памяти для связки тикер|ТФ === */
+var memCache={};
+
+function updateMemCache(){
+var key=state.ticker+'|'+state.tfKey;
+memCache[key]={
+rawIss: state.rawIss,
+candles: state.candles,
+lastUpdate: state.lastUpdate
+};
+/* LRU-обрезка */
+var keys=Object.keys(memCache);
+if(keys.length>MEM_CACHE_MAX){
+keys.sort(function(a,b){return memCache[a].lastUpdate - memCache[b].lastUpdate;});
+for(var i=0;i<keys.length-MEM_CACHE_MAX;i++)delete memCache[keys[i]];
+}
+}
 
 /* ========== РИСОВАНИЕ ЛИНИЙ ========== */
 var drawState={
@@ -372,7 +411,7 @@ selectedId:null,
 draggingPoint:null,
 nextId:1
 };
-var lines=[];
+var lines=[]; /* {id, i1, p1, t1, i2, p2, t2, color} */
 
 function linesStorageKey(ticker){return 'moex_lines_v2_'+ticker;}
 
@@ -401,6 +440,21 @@ var a=Math.max(0,lo-1),b=Math.min(c.length-1,lo);
 return (Math.abs(c[a].t-t)<=Math.abs(c[b].t-t))?a:b;
 }
 
+/* Пересчитать i1/i2 у всех линий по сохранённым t1/t2 — после подмены массива свечей */
+function remapLines(){
+for(var i=0;i<lines.length;i++){
+var ln=lines[i];
+if(ln.t1!=null){
+var ni=timeToIndex(ln.t1);
+if(ni!=null)ln.i1=ni;
+}
+if(ln.t2!=null){
+var nj=timeToIndex(ln.t2);
+if(nj!=null)ln.i2=nj;
+}
+}
+}
+
 function saveLines(){
 try{
 if(!state.candles.length)return;
@@ -410,6 +464,7 @@ var ln=lines[i];
 var t1=nearestCandleTime(ln.i1);
 var t2=nearestCandleTime(ln.i2);
 if(t1==null||t2==null)continue;
+ln.t1=t1;ln.t2=t2;
 arr.push({t1:t1,p1:ln.p1,t2:t2,p2:ln.p2,color:ln.color});
 }
 localStorage.setItem(linesStorageKey(state.ticker),JSON.stringify(arr));
@@ -434,8 +489,8 @@ var i2=timeToIndex(it.t2);
 if(i1==null||i2==null)continue;
 lines.push({
 id:drawState.nextId++,
-i1:i1,p1:it.p1,
-i2:i2,p2:it.p2,
+i1:i1,p1:it.p1,t1:it.t1,
+i2:i2,p2:it.p2,t2:it.t2,
 color:it.color||'#ffeb3b'
 });
 }
@@ -521,7 +576,6 @@ ctx.beginPath();ctx.arc(x2, y2, 6, 0, Math.PI*2);ctx.fill();ctx.stroke();
 }
 ctx.restore();
 
-/* СЕРЫЕ метки на шкале цен для концов выделенной (редактируемой) линии */
 if(isSel){
 if(y1>=rect.y && y1<=rect.y+rect.h) drawAxisTag(rect, y1, ln.p1, '#7d8694', '#0b0f14');
 if(y2>=rect.y && y2<=rect.y+rect.h) drawAxisTag(rect, y2, ln.p2, '#7d8694', '#0b0f14');
@@ -628,7 +682,6 @@ reloadChart();
 $('#ticker').addEventListener('change',function(e){
 saveLines();
 state.ticker=e.target.value;
-/* Мгновенно синхронизируем поле длины бокса на дефолт этого тикера */
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
 reloadChart();
@@ -657,11 +710,8 @@ else{state.db.boxes=[];}
 draw();
 });
 
-/* Изменение поля длины бокса: применяется только для тикеров БЕЗ дефолта.
-   Для VKCO/AFKS/X5/OZON/SMLT поле всегда возвращается к дефолту. */
 $('#db-len-inline').addEventListener('change',function(e){
 if(DB_DEFAULTS[state.ticker]){
-/* жёсткая привязка — не позволяем переопределять */
 var fixed = DB_DEFAULTS[state.ticker];
 e.target.value = fixed;
 state.db.boxp = fixed;
@@ -775,7 +825,8 @@ else if(diff<0){cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-dif
 if(state.err){
 setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);
 }else{
-setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd);
+var bg=state.bgLoading?' · <span style="color:var(--accent)">фон.догрузка…</span>':'';
+setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg);
 }
 }
 
@@ -791,23 +842,117 @@ var tf=TF_BY_KEY[state.tfKey];
 state.candles=aggregate(merged,tf.agg);
 }
 
-/* === Перезагрузка: generation-токен, последний запрос побеждает === */
+/* === Фоновая догрузка полной истории (B) === */
+function refreshInBackground(gen, tf){
+var tickerAtStart=state.ticker;
+var tfKeyAtStart=state.tfKey;
+
+/* запоминаем timestamp-границы viewport, чтобы потом восстановить */
+var oldCandles=state.candles;
+var tStart=null, tEnd=null;
+if(oldCandles.length){
+var vs=Math.max(0,Math.min(oldCandles.length-1,Math.floor(state.view.start)));
+var ve=Math.max(0,Math.min(oldCandles.length-1,Math.ceil(state.view.end)));
+tStart=oldCandles[vs].t;
+tEnd=oldCandles[ve].t;
+}
+var wasAtEnd=(state.view.end>=oldCandles.length-2);
+
+state.bgLoading=true;
+refreshStatus();
+
+loadAll(state.ticker, tf, MAX_CANDLES, null).then(function(raw){
+if(gen!==loadGen)return;
+if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart)return;
+if(!raw.length)return;
+
+/* merge с уже имеющимися (по timestamp) */
+var map={};
+for(var i=0;i<raw.length;i++)map[raw[i].t]=raw[i];
+for(var j=0;j<state.rawIss.length;j++)map[state.rawIss[j].t]=state.rawIss[j];
+var merged=[];
+for(var k in map)merged.push(map[k]);
+merged.sort(function(a,b){return a.t-b.t;});
+
+state.rawIss=merged;
+state.candles=aggregate(merged,tf.agg);
+state.lastUpdate=Date.now();
+state.err='';
+
+/* пересчёт индексов линий по сохранённым timestamp */
+remapLines();
+
+/* восстановление viewport по timestamp (или в конец, если был в конце) */
+if(wasAtEnd){
+state.view.end=state.candles.length-1;
+state.view.start=Math.max(0,state.view.end-Math.min(120,state.candles.length));
+}else if(tStart!=null && tEnd!=null){
+var ni=timeToIndex(tStart);
+var nj=timeToIndex(tEnd);
+if(ni!=null && nj!=null && nj>ni){
+state.view.start=ni;
+state.view.end=nj;
+}
+}
+
+recomputeIndicators();
+updateMemCache();
+refreshStatus();
+draw();
+}).catch(function(e){
+/* фоновая догрузка упала — не критично, данные уже показаны */
+}).then(function(){
+if(gen!==loadGen)return;
+if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart)return;
+state.bgLoading=false;
+refreshStatus();
+});
+}
+
+/* === Перезагрузка: кэш → хвост → фон (B + C) === */
 function reloadChart(){
 var gen=++loadGen;
 state.err='';
-state.loading=true;
-$('#loading').classList.remove('hide');
 
-/* Жёстко синхронизируем поле длины бокса с дефолтом этого тикера */
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
 
 var tf=TF_BY_KEY[state.tfKey];
+var cacheKey=state.ticker+'|'+state.tfKey;
+var cached=memCache[cacheKey];
+
+/* 1) Есть кэш — показываем мгновенно */
+if(cached && cached.candles && cached.candles.length){
+state.rawIss=cached.rawIss;
+state.candles=cached.candles;
+var n=state.candles.length;
+state.view.end=n-1;
+state.view.start=Math.max(0,n-Math.min(120,n));
+state.manualPx=false;
+state.viewPx={min:0,max:0};
+state.lastUpdate=cached.lastUpdate;
+state.loading=false;
+$('#loading').classList.add('hide');
+recomputeIndicators();
+loadLinesForTicker(state.ticker);
+refreshStatus();
+draw();
+
+/* в фоне: свежий кэш — только хвост; протухший — полная догрузка */
+if(Date.now()-cached.lastUpdate < MEM_CACHE_FRESH_MS){
+autoRefresh();
+}else{
+refreshInBackground(gen, tf);
+}
+return;
+}
+
+/* 2) Кэша нет — грузим хвост (быстро), потом историю в фоне */
+state.loading=true;
+$('#loading').classList.remove('hide');
 setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' …');
-loadAll(state.ticker,tf,MAX_CANDLES,function(n){
-if(gen!==loadGen)return;
-setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' · '+n+' св. …');
-}).then(function(raw){
+
+loadTail(state.ticker, tf, TAIL_CANDLES).then(function(raw){
 if(gen!==loadGen)return;
 if(!raw.length)throw new Error('Нет данных по '+state.ticker);
 state.rawIss=raw;
@@ -820,14 +965,20 @@ state.viewPx={min:0,max:0};
 state.lastUpdate=Date.now();
 recomputeIndicators();
 loadLinesForTicker(state.ticker);
+updateMemCache();
 refreshStatus();
+draw();
+
+state.loading=false;
+$('#loading').classList.add('hide');
+
+/* в фоне — полная история */
+refreshInBackground(gen, tf);
 }).catch(function(e){
 if(gen!==loadGen)return;
 state.err=(e&&e.message)?e.message:String(e);
 refreshStatus();
 console.error(e);
-}).then(function(){
-if(gen!==loadGen)return;
 state.loading=false;
 $('#loading').classList.add('hide');
 draw();
@@ -837,9 +988,8 @@ draw();
 function startAutoRefresh(){stopAutoRefresh();refreshTimer=setInterval(autoRefresh,REFRESH_MS);}
 function stopAutoRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
 
-/* === Автообновление: отбрасываем стухшие ответы, если тикер/ТФ сменились === */
 function autoRefresh(){
-if(state.loading||!state.candles.length)return;
+if(state.loading||state.bgLoading||!state.candles.length)return;
 if(drag||dragX||dragY||touchDrag||pinch||drawState.draggingPoint)return;
 
 var tickerAtStart=state.ticker;
@@ -864,6 +1014,7 @@ state.view.end=clamped.end;
 recomputeIndicators();
 state.lastUpdate=Date.now();
 state.err='';
+updateMemCache();
 refreshStatus();
 draw();
 }).catch(function(e){
@@ -1171,7 +1322,6 @@ hover.active=false;hover.inPlot=false;$('#ohlc').style.display='none';draw();
 cv.style.cursor='crosshair';
 });
 
-/* ПКМ — ВКЛ/ВЫКЛ режима «Линия» (и отмена недостроенной точки) */
 cv.addEventListener('contextmenu',function(e){
 e.preventDefault();
 if(drawState.pendingPoint){
@@ -1333,8 +1483,8 @@ drawState.pendingPoint = dp;
 var pp = drawState.pendingPoint;
 lines.push({
 id: drawState.nextId++,
-i1: pp.i, p1: pp.p,
-i2: dp.i, p2: dp.p,
+i1: pp.i, p1: pp.p, t1: nearestCandleTime(pp.i),
+i2: dp.i, p2: dp.p, t2: nearestCandleTime(dp.i),
 color: drawState.color
 });
 drawState.pendingPoint = null;
@@ -1388,9 +1538,11 @@ if(lines[li].id === drawState.draggingPoint.lineId){
 if(drawState.draggingPoint.which === 1){
 lines[li].i1 = dpW.i;
 lines[li].p1 = dpW.p;
+lines[li].t1 = nearestCandleTime(dpW.i);
 }else{
 lines[li].i2 = dpW.i;
 lines[li].p2 = dpW.p;
+lines[li].t2 = nearestCandleTime(dpW.i);
 }
 break;
 }
@@ -1555,8 +1707,6 @@ return reloadChart();
 }).then(function(){
 startAutoRefresh();
 setInterval(function(){
-/* Страховка: если поле длины бокса отклонилось от дефолта — возвращаем.
-   Не трогаем, пока пользователь сам редактирует поле. */
 var elDb=document.getElementById('db-len-inline');
 if(elDb && document.activeElement!==elDb){
 var expected=getBoxpForTicker(state.ticker);
