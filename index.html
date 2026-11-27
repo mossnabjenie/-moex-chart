@@ -217,7 +217,7 @@ var period1 = period2 - days*86400;
 var ySym = encodeURIComponent(ticker);
 var yUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/'+ySym
 +'?interval='+interval+'&period1='+period1+'&period2='+period2+'&events=div%2Csplit';
-var proxy = 'https://api.allorigins.win/raw?url='+encodeURIComponent(yUrl);
+var proxy = 'https://moex-yahoo.mossnabjenie.workers.dev/?url='+encodeURIComponent(yUrl);
 return fetch(proxy,{cache:'no-store'}).then(function(r){
 if(!r.ok) throw new Error('Yahoo HTTP '+r.status);
 return r.json();
