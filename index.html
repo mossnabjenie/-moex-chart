@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
-<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23080a0e%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg%2Bxml","purpose":"any maskable"}]}'>
+<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23080a0e%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}]}'>
 <meta name="theme-color" content="#080a0e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
@@ -50,7 +50,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <header>
 <div class="row">
 <select id="ticker" title="ПКМ: свернуть/показать панели"></select>
-<input id="search" placeholder="поиск: SMLT / VKCO" autocomplete="off">
+<input id="search" placeholder="поиск: SMLT / NVDA" autocomplete="off">
 </div>
 <div class="tfs" id="tfs"></div>
 <button id="btn-db" class="btn-db-main" title="Вкл/выкл Darvas Box">📦 Darvas</button>
@@ -80,7 +80,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="chartWrap">
 <canvas id="cv"></canvas>
 <div id="ohlc"></div>
-<div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40</div>
+<div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40 · US: NVDA AMZN TSLA +330</div>
 <div id="loading">Загрузка графика…</div>
 </div>
 </div>
@@ -99,6 +99,48 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
+/* ====== ИНОСТРАННЫЕ АКЦИИ (Yahoo Finance) ~340 тикеров ====== */
+var FOREIGN_TICKERS = [
+/* Мегатех + полупроводники + AI */
+'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','QCOM','TXN','MU','AMAT','LRCX','KLAC','ASML','TSM','ARM','MRVL','ON','NXPI','ADI','MCHP','SWKS','ALAB','MPWR','IBM','ACN','INFY','SAP','CTSH','EPAM',
+/* AI-specific + кибербезопасность + облака */
+'PLTR','AI','PATH','BBAI','SOUN','SMCI','PANW','CRWD','ZS','FTNT','S','OKTA','CYBR','NET','DDOG','MDB','SNOW','ESTC','GTLB','TEAM','INTU','NOW','WDAY',
+/* Потребительский софт / соцсети / гигиганты */
+'SHOP','SQ','PYPL','UBER','LYFT','ABNB','DASH','SPOT','SNAP','PINS','ZM','DOCU','ROKU','TWLO','U','RBLX','DUOL','HOOD',
+/* Крипто/Meme */
+'COIN','MSTR','MARA','RIOT','CLSK','HUT','BITF','BITO','IBIT','GBTC','ETHE','GME','AMC','FFIE',
+/* Банки/финансы/страхование */
+'JPM','BAC','WFC','C','GS','MS','USB','PNC','TFC','SCHW','BLK','BK','STT','COF','AXP','V','MA','DFS','SYF','BRK-B','MET','PRU','AIG','ALL','PGR','TRV','CB','AON','MMC','MCO','SPGI','ICE','CME','NDAQ','CBOE',
+/* Здоровье/фарма/медтех */
+'JNJ','PFE','MRK','ABBV','LLY','UNH','CVS','CI','HUM','ELV','ABT','AMGN','GILD','BMY','BIIB','VRTX','REGN','MRNA','NVAX','BNTX','TMO','DHR','A','BIO','ILMN','SYK','BSX','MDT','ZBH','EW','ISRG','DXCM','ALGN','RMD','NVO','AZN','GSK','SNY','NVS','ZTS','CRSP','EDIT','NTLA','BEAM','SRPT','BMRN','ALNY',
+/* Энергетика/нефть/газ */
+'XOM','CVX','COP','EOG','OXY','SLB','HAL','BKR','PSX','VLO','MPC','DVN','FANG','HES','MRO','KMI','WMB','OKE','ET','EPD','NEE','DUK','SO','D','AEP','EXC','XEL',
+/* Промышленность/оборона */
+'BA','GD','LMT','NOC','RTX','L3H','HII','HON','GE','MMM','CAT','DE','CMI','PCAR','OSK','URI','FAST','GWW','EMR','ROK','ETN','PH','ITW','DOV','XYL','AME','ROP','WM','RSG','CTAS','PAYX','ADP','VRSK','TT','JCI','CARR','OTIS','TDG','HEI','AXON',
+/* Ритейл/потребительские */
+'WMT','TGT','COST','DG','DLTR','HD','LOW','TJX','ROST','BURL','M','KSS','JWN','BBY','EBAY','ETSY','W','CHWY','CVNA','LULU','NKE','SBUX','MCD','YUM','DPZ','CMG','WING','QSR','DRI','KHC','CAG','GIS','K','HSY',
+/* Еда/напитки/табак */
+'KO','PEP','MNST','KDP','STZ','TAP','BUD','BF-B','MO','PM','BTI',
+/* Медиа/телеком */
+'DIS','CMCSA','NFLX','PARA','WBD','FOX','FOXA','T','VZ','TMUS','CHTR','LUMN',
+/* Авиа/путешествия */
+'DAL','UAL','AAL','LUV','ALK','JBLU','SAVE','CCL','RCL','NCLH','MAR','HLT','H','BKNG','EXPE','TRIP','CAR',
+/* Авто/EV */
+'F','GM','RIVN','LCID','NIO','XPEV','LI','FSR','GOEV','PSNY','STLA','TM','HMC','SONY',
+/* Китай ADR */
+'BABA','JD','PDD','BIDU','TCEHY','NTES','TME','IQ','BILI','YUMC','ZTO','BEKE','TAL','EDU','GDS','VIPS','WB','MOMO','YY','TIGR','FUTU',
+/* Европа ADR */
+'TTE','SHEL','BP','UL','DEO','ING','UBS','DB','HSBC','MFG','PHG',
+/* REIT */
+'SPG','PLD','AMT','CCI','EQIX','DLR','PSA','O','VTR','WELL','ARE','BXP','VNO',
+/* Материалы/металлы */
+'LIN','APD','SHW','ECL','DD','DOW','LYB','CE','PPG','RPM','NEM','FCX','GOLD','AA','X','CLF','NUE','STLD',
+/* ETF */
+'SPY','QQQ','IWM','DIA','VTI','VOO','EEM','EFA','AGG','BND','TLT','GLD','SLV','ARKK','SOXX','SMH','XLE','XLF','XLK','XLV','TQQQ','SQQQ',
+/* Солнце/EV-зарядки */
+'ENPH','SEDG','FSLR','RUN','PLUG','BE','CHPT','BLNK'
+];
+
 var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
 
 var DB_DEFAULTS={
@@ -110,8 +152,6 @@ OZON:39,
 SMLT:40
 };
 
-/* Время жизни ручного изменения длины бокса (мс). Через это время
-   значение автоматически вернётся к DB_DEFAULTS[ticker]. */
 var BOX_OVERRIDE_MS = 60000;
 
 var TF_LIST=[
@@ -151,26 +191,60 @@ function daysAgoStr(n){var d=new Date(Date.now()-n*86400000);return d.getFullYea
 function fmtShort(ts){var d=new Date(ts);return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(-2);}
 function fmtHm(ts){var d=new Date(ts);return pad2(d.getHours())+':'+pad2(d.getMinutes());}
 
+var FOREIGN_SET = {}; FOREIGN_TICKERS.forEach(function(t){FOREIGN_SET[t]=1;});
+function isForeign(ticker){ return !!FOREIGN_SET[ticker]; }
+
 function priorityRank(sec){
+if(isForeign(sec)) return 500;
 for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)return i;}
 return 1000;
 }
 
-/* Возвращает АКТУАЛЬНУЮ длину бокса для тикера.
-   Приоритет:
-   1) Временный ручной override (если его время ещё не истекло) — для ЛЮБОГО тикера
-   2) Дефолт из DB_DEFAULTS (для «наших» тикеров)
-   3) Постоянная ручная настройка из localStorage (для остальных тикеров)
-   4) 10
-*/
+/* ====== Yahoo Finance ====== */
+var YAHOO_INTERVAL_MAP={
+'10m': '5m','15m': '15m','30m': '30m','1h': '60m','2h': '60m','4h': '60m',
+'1d': '1d','1w': '1wk','1M': '1mo'
+};
+var YAHOO_AGG_MAP={'10m': 2,'15m': 1,'30m': 1,'1h': 1,'2h': 2,'4h': 4,'1d': 1,'1w': 1,'1M': 1};
+var YAHOO_RANGE_DAYS={'5m': 60,'15m': 60,'30m': 60,'60m': 730,'1d': 3650,'1wk': 3650,'1mo': 3650};
+
+function yahooFetchCandles(ticker, tfKey, maxCandles){
+var interval = YAHOO_INTERVAL_MAP[tfKey] || '1d';
+var agg = YAHOO_AGG_MAP[tfKey] || 1;
+var days = YAHOO_RANGE_DAYS[interval] || 365;
+var period2 = Math.floor(Date.now()/1000);
+var period1 = period2 - days*86400;
+var ySym = encodeURIComponent(ticker);
+var yUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/'+ySym
++'?interval='+interval+'&period1='+period1+'&period2='+period2+'&events=div%2Csplit';
+var proxy = 'https://api.allorigins.win/raw?url='+encodeURIComponent(yUrl);
+return fetch(proxy,{cache:'no-store'}).then(function(r){
+if(!r.ok) throw new Error('Yahoo HTTP '+r.status);
+return r.json();
+}).then(function(j){
+var result = j.chart && j.chart.result && j.chart.result[0];
+if(!result) throw new Error('Yahoo: нет данных по '+ticker);
+var ts = result.timestamp || [];
+var q = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+var opens=q.open||[], closes=q.close||[], highs=q.high||[], lows=q.low||[], vols=q.volume||[];
+var arr = [];
+for(var i=0;i<ts.length;i++){
+if(opens[i]==null || closes[i]==null) continue;
+arr.push({t: ts[i]*1000, o: opens[i], c: closes[i], h: highs[i], l: lows[i], v: vols[i]||0});
+}
+arr.sort(function(a,b){return a.t-b.t;});
+if(agg>1) arr = aggregate(arr, agg);
+if(arr.length>maxCandles) arr = arr.slice(-maxCandles);
+return arr;
+});
+}
+
 function getBoxpForTicker(ticker){
 try{
 var ovRaw=localStorage.getItem('db_boxp_ov_'+ticker);
 if(ovRaw){
 var ov=JSON.parse(ovRaw);
-if(ov && ov.val>=2 && ov.val<=200 && ov.until>Date.now()){
-return ov.val;
-}
+if(ov && ov.val>=2 && ov.val<=200 && ov.until>Date.now()){return ov.val;}
 localStorage.removeItem('db_boxp_ov_'+ticker);
 }
 }catch(e){}
@@ -181,8 +255,6 @@ if(stored){var n=parseInt(stored,10);if(n>=2&&n<=200)return n;}
 }catch(e){}
 return 10;
 }
-
-/* Возвращает timestamp окончания override (или 0, если override нет/истёк). */
 function getOverrideUntil(ticker){
 try{
 var ovRaw=localStorage.getItem('db_boxp_ov_'+ticker);
@@ -192,11 +264,8 @@ if(ov && ov.until>Date.now())return ov.until;
 }catch(e){}
 return 0;
 }
-
-/* Обновляет визуальный вид поля длины (подсветка, если активен override) */
 function refreshDbLenFieldVisual(){
-var el=$('#db-len-inline');
-if(!el)return;
+var el=$('#db-len-inline'); if(!el)return;
 var until=getOverrideUntil(state.ticker);
 if(until>0){
 el.classList.add('temp-override');
@@ -242,6 +311,9 @@ d.forEach(function(r){
 var sec=String(r.at(iSec)),name=String(r.at(iName)||sec);
 if(!sec||seen[sec])return;seen[sec]=1;
 list.push({sec:sec,name:name});
+});
+FOREIGN_TICKERS.forEach(function(t){
+if(!seen[t]){list.push({sec:t,name:t}); seen[t]=1;}
 });
 list.sort(function(a,b){return a.sec.localeCompare(b.sec);});
 return list;
@@ -427,9 +499,7 @@ var refreshTimer=null;
 var loadGen=0;
 var memCache={};
 
-/* === Состояние видимости панелей === */
 var uiCollapse={headerCollapsed:false,drawPanelHidden:false};
-
 function applyPanelState(){
 var header=document.querySelector('header');
 var drawPanel=document.getElementById('draw-panel');
@@ -448,32 +518,23 @@ tk.title=isMinimal?'ПКМ: показать все панели':'ПКМ: св�
 }
 requestAnimationFrame(function(){ try{resize();}catch(e){} });
 }
-
 function setupPanelToggle(){
 var header=document.querySelector('header');
 var drawPanel=document.getElementById('draw-panel');
-
 header.addEventListener('contextmenu',function(e){
 var tickerEl=e.target.closest('#ticker');
 if(tickerEl){
 e.preventDefault();
 var isMinimal=uiCollapse.headerCollapsed||uiCollapse.drawPanelHidden;
-if(isMinimal){
-uiCollapse.headerCollapsed=false;
-uiCollapse.drawPanelHidden=false;
-}else{
-uiCollapse.headerCollapsed=true;
-uiCollapse.drawPanelHidden=true;
-}
-applyPanelState();
-return;
+if(isMinimal){uiCollapse.headerCollapsed=false;uiCollapse.drawPanelHidden=false;}
+else{uiCollapse.headerCollapsed=true;uiCollapse.drawPanelHidden=true;}
+applyPanelState();return;
 }
 if(e.target.closest('#search')) return;
 e.preventDefault();
 uiCollapse.headerCollapsed=!uiCollapse.headerCollapsed;
 applyPanelState();
 });
-
 drawPanel.addEventListener('contextmenu',function(e){
 e.preventDefault();
 uiCollapse.drawPanelHidden=!uiCollapse.drawPanelHidden;
@@ -491,10 +552,9 @@ for(var i=0;i<keys.length-MEM_CACHE_MAX;i++)delete memCache[keys[i]];
 }
 }
 
-/* ========== РИСОВАНИЕ ЛИНИЙ ========== */
+/* РИСОВАНИЕ */
 var drawState={mode:null,color:'#ffeb3b',pendingPoint:null,selectedId:null,draggingPoint:null,nextId:1};
 var lines=[];
-
 function linesStorageKey(ticker){return 'moex_lines_v2_'+ticker;}
 function nearestCandleTime(i){
 var c=state.candles;if(!c||!c.length)return null;
@@ -546,9 +606,7 @@ lines.push({id:drawState.nextId++,i1:i1,p1:it.p1,t1:it.t1,i2:i2,p2:it.p2,t2:it.t
 }
 }catch(e){}
 }
-
 function updateDrawUi(){$('#btn-draw-line').classList.toggle('active', drawState.mode === 'line');}
-
 function pxToData(px, py, rect, rng){
 var viewSpan = Math.max(1, state.view.end - state.view.start);
 var i = state.view.start + ((px - rect.x) / rect.w) * viewSpan;
@@ -623,7 +681,6 @@ ctx.save();ctx.fillStyle = drawState.color;
 ctx.beginPath();ctx.arc(x1, y1, 4, 0, Math.PI*2);ctx.fill();ctx.restore();
 }
 }
-
 function setupDrawUi(){
 $('#btn-draw-line').addEventListener('click', function(){
 drawState.mode = (drawState.mode === 'line') ? null : 'line';
@@ -652,8 +709,6 @@ lines = lines.filter(function(l){return l.id !== drawState.selectedId;});
 drawState.selectedId = null; saveLines(); draw(); e.preventDefault();
 });
 }
-
-/* ========== КОНЕЦ РИСОВАНИЯ ========== */
 
 function renderTickerOptions(filter){
 filter=filter||'';
@@ -706,30 +761,21 @@ $('#btn-db').classList.toggle('active',state.db.enabled);
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 draw();
 });
-
-/* === РУЧНОЕ ИЗМЕНЕНИЕ ДЛИНЫ БОКСА: работает для ВСЕХ тикеров.
-   Для «наших» тикеров (VKCO/AFKS/X5/FIVE/OZON/SMLT) — временный override на 1 минуту,
-   потом автоматический возврат к DB_DEFAULTS. Для остальных — постоянная настройка. === */
 $('#db-len-inline').addEventListener('change',function(e){
 var v=parseInt(e.target.value,10)||10;
 v=Math.max(2,Math.min(200,v));
 e.target.value=v;
 state.db.boxp=v;
-
 var isDefaultTicker = !!DB_DEFAULTS[state.ticker];
 if(isDefaultTicker){
-try{
-localStorage.setItem('db_boxp_ov_'+state.ticker, JSON.stringify({val:v, until:Date.now()+BOX_OVERRIDE_MS}));
-}catch(err){}
+try{localStorage.setItem('db_boxp_ov_'+state.ticker, JSON.stringify({val:v, until:Date.now()+BOX_OVERRIDE_MS}));}catch(err){}
 }else{
 try{localStorage.setItem('db_boxp_'+state.ticker, String(v));}catch(err){}
 }
-
 refreshDbLenFieldVisual();
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
 draw();
 });
-
 setupEmaInputs();
 }
 
@@ -746,7 +792,6 @@ recomputeIndicators();draw();
 e20.addEventListener('change',apply);
 e200.addEventListener('change',apply);
 }
-
 function loadEmaSettings(){
 try{
 var a=parseInt(localStorage.getItem('ema20p'),10);
@@ -757,7 +802,6 @@ if(b>=1&&b<=1000)state.ema200p=b;
 var e20=$('#ema20-inline');if(e20)e20.value=state.ema20p;
 var e200=$('#ema200-inline');if(e200)e200.value=state.ema200p;
 }
-
 function saveDbSettings(){try{localStorage.setItem('db_enabled',state.db.enabled?'1':'0');}catch(e){}}
 function loadDbSettings(){try{if(localStorage.getItem('db_enabled')==='1')state.db.enabled=true;}catch(e){};$('#btn-db').classList.toggle('active',state.db.enabled);}
 
@@ -767,6 +811,7 @@ function candleCloseMs(){
 var tf=TF_BY_KEY[state.tfKey];
 var last=state.candles.length?state.candles.at(-1):null;
 if(!last)return 0;
+if(isForeign(state.ticker)) return last.t + (tf.iss||10)*60*1000*(tf.agg||1);
 if(tf.iss===24){var md=new Date(last.t+MSK_OFFSET);var endMsk=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate(),END_HOUR_MSK,END_MIN_MSK,0,0);return endMsk-MSK_OFFSET;}
 if(tf.iss===7){var md=new Date(last.t+MSK_OFFSET);var dow=md.getUTCDay();var add=(5-dow+7)%7;var fri=Date.UTC(md.getUTCFullYear(),md.getUTCMonth(),md.getUTCDate()+add,END_HOUR_MSK,END_MIN_MSK,0,0);return fri-MSK_OFFSET;}
 if(tf.iss===31){var md=new Date(last.t+MSK_OFFSET);var endMonth=Date.UTC(md.getUTCFullYear(),md.getUTCMonth()+1,0,END_HOUR_MSK,END_MIN_MSK,0,0);return endMonth-MSK_OFFSET;}
@@ -794,7 +839,8 @@ if(ovl>0){
 var secLeft=Math.max(1,Math.ceil((ovl-Date.now())/1000));
 ovStr=' · <span style="color:var(--accent)">Darvas '+state.db.boxp+' (override, '+secLeft+'с)</span>';
 }
-setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg+ovStr);
+var src = isForeign(state.ticker) ? ' · <span style="color:#4fc3f7">Yahoo</span>' : '';
+setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg+ovStr+src);
 }
 }
 
@@ -821,7 +867,10 @@ tStart=oldCandles[vs].t;tEnd=oldCandles[ve].t;
 }
 var wasAtEnd=(state.view.end>=oldCandles.length-2);
 state.bgLoading=true;refreshStatus();
-loadAll(state.ticker, tf, MAX_CANDLES, null).then(function(raw){
+var loader = isForeign(state.ticker)
+? yahooFetchCandles(state.ticker, state.tfKey, MAX_CANDLES)
+: loadAll(state.ticker, tf, MAX_CANDLES, null);
+loader.then(function(raw){
 if(gen!==loadGen)return;
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart)return;
 if(!raw.length)return;
@@ -881,7 +930,14 @@ state.loading=true;
 $('#loading').classList.remove('hide');
 setStatus('Загрузка '+esc(state.ticker)+' · '+tf.label+' …');
 
-loadTail(state.ticker, tf, TAIL_CANDLES).then(function(raw){
+var loader;
+if(isForeign(state.ticker)){
+loader = yahooFetchCandles(state.ticker, state.tfKey, TAIL_CANDLES);
+}else{
+loader = loadTail(state.ticker, tf, TAIL_CANDLES);
+}
+
+loader.then(function(raw){
 if(gen!==loadGen)return;
 if(!raw.length)throw new Error('Нет данных по '+state.ticker);
 state.rawIss=raw;
@@ -914,7 +970,10 @@ var tf=TF_BY_KEY[state.tfKey];
 var oldLen=state.candles.length;
 var wasAtEnd=(state.view.end===oldLen-1);
 var visibleCount=state.view.end-state.view.start;
-loadTail(state.ticker,tf,600).then(function(raw){
+var tailLoader = isForeign(state.ticker)
+? yahooFetchCandles(state.ticker, state.tfKey, 600)
+: loadTail(state.ticker,tf,600);
+tailLoader.then(function(raw){
 if(state.ticker!==tickerAtStart || state.tfKey!==tfKeyAtStart) return;
 if(!raw.length)return;
 mergeTail(raw);
@@ -1042,6 +1101,7 @@ drawPriceTag(lastY,last.c,rect);
 ctx.font='12px sans-serif';ctx.textAlign='left';ctx.fillStyle=getCss('--muted');
 var visibleCount=e-s+1;
 var label=state.ticker+' · '+TF_BY_KEY[state.tfKey].label+' · '+visibleCount+' св.';
+if(isForeign(state.ticker))label+=' · Yahoo';
 if(state.manualPx)label+=' · Y-zoom (dbl-click)';
 ctx.fillText(label,rect.x+6,rect.y+14);
 ctx.font='11px sans-serif';
@@ -1381,9 +1441,6 @@ return reloadChart();
 }).then(function(){
 startAutoRefresh();
 setInterval(function(){
-/* Каждую секунду сверяем текущую длину бокса с фактической.
-   Если истёк override — вернётся к дефолту автоматически.
-   Также подчищаем подсветку поля. */
 var elDb=document.getElementById('db-len-inline');
 if(elDb && document.activeElement!==elDb){
 var expected=getBoxpForTicker(state.ticker);
