@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>MOEX Chart</title>
-<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23080a0e%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}]}'>
+<link rel="manifest" href='data:application/manifest+json,{"name":"MOEX PineTerminal","short_name":"MOEX","start_url":"./index.html","scope":"./","display":"standalone","background_color":"%23080a0e","theme_color":"%23080a0e","icons":[{"src":"data:image/svg%2Bxml;utf8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270%200%20512%20512%27%3E%3Crect width=%27512%27 height=%27512%27 rx=%2796%27 fill=%27%23080a0e%27/%3E%3Crect x=%27120%27 y=%27160%27 width=%2748%27 height=%27200%27 fill=%27%2326a69a%27/%3E%3Crect x=%27200%27 y=%27120%27 width=%2748%27 height=%27240%27 fill=%27%23ef5350%27/%3E%3Crect x=%27280%27 y=%27180%27 width=%2748%27 height=%27180%27 fill=%27%2326a69a%27/%3E%3Crect x=%27360%27 y=%27140%27 width=%2748%27 height=%27220%27 fill=%27%23ef5350%27/%3E%3C/svg%3E","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}]}'>
 <meta name="theme-color" content="#080a0e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="MOEX">
@@ -99,16 +99,20 @@ if(window.caches&&caches.keys){caches.keys().then(function(ks){ks.forEach(functi
 var BASE='https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR';
 var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
 
-/* ====== ИНОСТРАННЫЕ АКЦИИ (Yahoo Finance) ~340 тикеров ====== */
+/* ====== ИНОСТРАННЫЕ АКЦИИ (Yahoo Finance) ====== */
 var FOREIGN_TICKERS = [
 /* Мегатех + полупроводники + AI */
 'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','QCOM','TXN','MU','AMAT','LRCX','KLAC','ASML','TSM','ARM','MRVL','ON','NXPI','ADI','MCHP','SWKS','ALAB','MPWR','IBM','ACN','INFY','SAP','CTSH','EPAM',
-/* AI-specific + кибербезопасность + облака */
-'PLTR','AI','PATH','BBAI','SOUN','SMCI','PANW','CRWD','ZS','FTNT','S','OKTA','CYBR','NET','DDOG','MDB','SNOW','ESTC','GTLB','TEAM','INTU','NOW','WDAY',
-/* Потребительский софт / соцсети / гигиганты */
+/* AI-specific + новые AI-компании */
+'PLTR','AI','PATH','BBAI','SOUN','SMCI','NBIS','CRWV','TEM','RDDT','APP','HIMS','OSCR','IREN',
+/* Кибербезопасность + облака */
+'PANW','CRWD','ZS','FTNT','S','OKTA','CYBR','NET','DDOG','MDB','SNOW','ESTC','GTLB','TEAM','INTU','NOW','WDAY',
+/* Потребительский софт / соцсети */
 'SHOP','SQ','PYPL','UBER','LYFT','ABNB','DASH','SPOT','SNAP','PINS','ZM','DOCU','ROKU','TWLO','U','RBLX','DUOL','HOOD',
 /* Крипто/Meme */
-'COIN','MSTR','MARA','RIOT','CLSK','HUT','BITF','BITO','IBIT','GBTC','ETHE','GME','AMC','FFIE',
+'COIN','MSTR','MARA','RIOT','CLSK','HUT','BITF','BITO','IBIT','GBTC','ETHE','GME','AMC','FFIE','CORZ','BTBT','CRCL','GLXY',
+/* SpaceX-смежные / космос */
+'DXYZ','RKLB','ASTS','FLY','LUNR','PL','SATS',
 /* Банки/финансы/страхование */
 'JPM','BAC','WFC','C','GS','MS','USB','PNC','TFC','SCHW','BLK','BK','STT','COF','AXP','V','MA','DFS','SYF','BRK-B','MET','PRU','AIG','ALL','PGR','TRV','CB','AON','MMC','MCO','SPGI','ICE','CME','NDAQ','CBOE',
 /* Здоровье/фарма/медтех */
@@ -136,7 +140,7 @@ var FOREIGN_TICKERS = [
 /* Материалы/металлы */
 'LIN','APD','SHW','ECL','DD','DOW','LYB','CE','PPG','RPM','NEM','FCX','GOLD','AA','X','CLF','NUE','STLD',
 /* ETF */
-'SPY','QQQ','IWM','DIA','VTI','VOO','EEM','EFA','AGG','BND','TLT','GLD','SLV','ARKK','SOXX','SMH','XLE','XLF','XLK','XLV','TQQQ','SQQQ',
+'SPY','QQQ','IWM','DIA','VTI','VOO','EEM','EFA','AGG','BND','TLT','GLD','SLV','ARKK','SOXX','SMH','XLE','XLF','XLK','XLV','TQQQ','SQQQ','ARKX','UFO',
 /* Солнце/EV-зарядки */
 'ENPH','SEDG','FSLR','RUN','PLUG','BE','CHPT','BLNK'
 ];
@@ -201,11 +205,12 @@ return 1000;
 }
 
 /* ====== Yahoo Finance ====== */
+/* Исправлено: 2ч и 4ч теперь берут нативные дневки (без битых склеек) */
 var YAHOO_INTERVAL_MAP={
-'10m': '5m','15m': '15m','30m': '30m','1h': '60m','2h': '60m','4h': '60m',
+'10m': '5m','15m': '15m','30m': '30m','1h': '60m','2h': '1d','4h': '1d',
 '1d': '1d','1w': '1wk','1M': '1mo'
 };
-var YAHOO_AGG_MAP={'10m': 2,'15m': 1,'30m': 1,'1h': 1,'2h': 2,'4h': 4,'1d': 1,'1w': 1,'1M': 1};
+var YAHOO_AGG_MAP={'10m': 2,'15m': 1,'30m': 1,'1h': 1,'2h': 1,'4h': 1,'1d': 1,'1w': 1,'1M': 1};
 var YAHOO_RANGE_DAYS={'5m': 60,'15m': 60,'30m': 60,'60m': 730,'1d': 3650,'1wk': 3650,'1mo': 3650};
 
 function yahooFetchCandles(ticker, tfKey, maxCandles){
