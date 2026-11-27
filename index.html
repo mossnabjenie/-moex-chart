@@ -27,6 +27,7 @@ button.active{background:var(--accent);color:#111;border-color:var(--accent);fon
 .btn-db-main{padding:5px 10px !important;font-weight:700 !important;font-size:12px !important;border:2px solid #2a323d !important}
 .btn-db-main.active{background:linear-gradient(135deg,#4a525e,#333a44) !important;color:#e6ebf2 !important;border-color:#5a6470 !important}
 #db-len-inline{width:52px !important;text-align:center;padding:5px 4px !important;font-weight:600}
+#db-len-inline.temp-override{border-color:var(--accent) !important;color:var(--accent) !important}
 #status{margin-left:auto;font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
 #chartWrap{position:relative;flex:1;min-height:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
@@ -53,7 +54,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 </div>
 <div class="tfs" id="tfs"></div>
 <button id="btn-db" class="btn-db-main" title="Вкл/выкл Darvas Box">📦 Darvas</button>
-<input type="number" id="db-len-inline" min="2" max="200" value="10" title="Длина бокса Darvas">
+<input type="number" id="db-len-inline" min="2" max="200" value="10" title="Длина бокса Darvas. Ручное изменение действует 1 минуту, потом возврат к дефолту.">
 <div id="status">Загрузка…</div>
 </header>
 
@@ -109,6 +110,10 @@ OZON:39,
 SMLT:40
 };
 
+/* Время жизни ручного изменения длины бокса (мс). Через это время
+   значение автоматически вернётся к DB_DEFAULTS[ticker]. */
+var BOX_OVERRIDE_MS = 60000;
+
 var TF_LIST=[
 {key:'10m',label:'10м',iss:10,agg:1},
 {key:'15m',label:'15м',iss:1,agg:15},
@@ -151,13 +156,56 @@ for(var i=0;i<PRIORITY_GROUPS.length;i++){if(PRIORITY_GROUPS[i].indexOf(sec)>=0)
 return 1000;
 }
 
+/* Возвращает АКТУАЛЬНУЮ длину бокса для тикера.
+   Приоритет:
+   1) Временный ручной override (если его время ещё не истекло) — для ЛЮБОГО тикера
+   2) Дефолт из DB_DEFAULTS (для «наших» тикеров)
+   3) Постоянная ручная настройка из localStorage (для остальных тикеров)
+   4) 10
+*/
 function getBoxpForTicker(ticker){
-if(DB_DEFAULTS[ticker]) return DB_DEFAULTS[ticker];
+try{
+var ovRaw=localStorage.getItem('db_boxp_ov_'+ticker);
+if(ovRaw){
+var ov=JSON.parse(ovRaw);
+if(ov && ov.val>=2 && ov.val<=200 && ov.until>Date.now()){
+return ov.val;
+}
+localStorage.removeItem('db_boxp_ov_'+ticker);
+}
+}catch(e){}
+if(DB_DEFAULTS[ticker])return DB_DEFAULTS[ticker];
 try{
 var stored=localStorage.getItem('db_boxp_'+ticker);
 if(stored){var n=parseInt(stored,10);if(n>=2&&n<=200)return n;}
 }catch(e){}
 return 10;
+}
+
+/* Возвращает timestamp окончания override (или 0, если override нет/истёк). */
+function getOverrideUntil(ticker){
+try{
+var ovRaw=localStorage.getItem('db_boxp_ov_'+ticker);
+if(!ovRaw)return 0;
+var ov=JSON.parse(ovRaw);
+if(ov && ov.until>Date.now())return ov.until;
+}catch(e){}
+return 0;
+}
+
+/* Обновляет визуальный вид поля длины (подсветка, если активен override) */
+function refreshDbLenFieldVisual(){
+var el=$('#db-len-inline');
+if(!el)return;
+var until=getOverrideUntil(state.ticker);
+if(until>0){
+el.classList.add('temp-override');
+var leftSec=Math.max(1,Math.ceil((until-Date.now())/1000));
+el.title='Изменено вручную: '+state.db.boxp+' (вернётся к '+(DB_DEFAULTS[state.ticker]||'10')+' через '+leftSec+' сек)';
+}else{
+el.classList.remove('temp-override');
+el.title='Длина бокса Darvas. Ручное изменение действует 1 минуту, потом возврат к дефолту.';
+}
 }
 
 function fmtCountdown(ms){
@@ -638,6 +686,7 @@ $('#ticker').addEventListener('change',function(e){
 saveLines();state.ticker=e.target.value;
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
+refreshDbLenFieldVisual();
 reloadChart();
 });
 $('#search').addEventListener('input',function(e){renderTickerOptions(e.target.value);});
@@ -647,6 +696,7 @@ var first=$('#ticker').options[0];
 if(first){saveLines();$('#ticker').value=first.value;state.ticker=first.value;
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
+refreshDbLenFieldVisual();
 reloadChart();}
 }
 });
@@ -656,16 +706,30 @@ $('#btn-db').classList.toggle('active',state.db.enabled);
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}else{state.db.boxes=[];}
 draw();
 });
+
+/* === РУЧНОЕ ИЗМЕНЕНИЕ ДЛИНЫ БОКСА: работает для ВСЕХ тикеров.
+   Для «наших» тикеров (VKCO/AFKS/X5/FIVE/OZON/SMLT) — временный override на 1 минуту,
+   потом автоматический возврат к DB_DEFAULTS. Для остальных — постоянная настройка. === */
 $('#db-len-inline').addEventListener('change',function(e){
-if(DB_DEFAULTS[state.ticker]){
-var fixed=DB_DEFAULTS[state.ticker];e.target.value=fixed;state.db.boxp=fixed;
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();return;
-}
-var v=parseInt(e.target.value,10)||10;v=Math.max(2,Math.min(200,v));
-e.target.value=v;state.db.boxp=v;
+var v=parseInt(e.target.value,10)||10;
+v=Math.max(2,Math.min(200,v));
+e.target.value=v;
+state.db.boxp=v;
+
+var isDefaultTicker = !!DB_DEFAULTS[state.ticker];
+if(isDefaultTicker){
+try{
+localStorage.setItem('db_boxp_ov_'+state.ticker, JSON.stringify({val:v, until:Date.now()+BOX_OVERRIDE_MS}));
+}catch(err){}
+}else{
 try{localStorage.setItem('db_boxp_'+state.ticker, String(v));}catch(err){}
-if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();
+}
+
+refreshDbLenFieldVisual();
+if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}
+draw();
 });
+
 setupEmaInputs();
 }
 
@@ -724,7 +788,13 @@ else if(diff<0){cd='<span style="color:#ef5350">разрыв '+fmtCountdown(-dif
 if(state.err){setStatus('<span style="color:#ef5350">Ошибка: '+esc(state.err)+'</span>',true);}
 else{
 var bg=state.bgLoading?' · <span style="color:var(--accent)">фон.догрузка…</span>':'';
-setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg);
+var ovl=getOverrideUntil(state.ticker);
+var ovStr='';
+if(ovl>0){
+var secLeft=Math.max(1,Math.ceil((ovl-Date.now())/1000));
+ovStr=' · <span style="color:var(--accent)">Darvas '+state.db.boxp+' (override, '+secLeft+'с)</span>';
+}
+setStatus('<b>'+esc(state.ticker)+'</b> '+price+' · '+state.candles.length+' св. · <b>'+range+'</b> · посл. '+lastTime+' · '+cd+bg+ovStr);
 }
 }
 
@@ -787,6 +857,7 @@ var gen=++loadGen;
 state.err='';
 state.db.boxp = getBoxpForTicker(state.ticker);
 $('#db-len-inline').value = state.db.boxp;
+refreshDbLenFieldVisual();
 var tf=TF_BY_KEY[state.tfKey];
 var cacheKey=state.ticker+'|'+state.tfKey;
 var cached=memCache[cacheKey];
@@ -1305,10 +1376,14 @@ renderTickerOptions();
 $('#ticker').value=state.ticker;
 state.db.boxp=getBoxpForTicker(state.ticker);
 $('#db-len-inline').value=state.db.boxp;
+refreshDbLenFieldVisual();
 return reloadChart();
 }).then(function(){
 startAutoRefresh();
 setInterval(function(){
+/* Каждую секунду сверяем текущую длину бокса с фактической.
+   Если истёк override — вернётся к дефолту автоматически.
+   Также подчищаем подсветку поля. */
 var elDb=document.getElementById('db-len-inline');
 if(elDb && document.activeElement!==elDb){
 var expected=getBoxpForTicker(state.ticker);
@@ -1317,6 +1392,7 @@ state.db.boxp=expected;elDb.value=expected;
 if(state.db.enabled){state.db.boxes=computeDarvas(state.candles,state.db.boxp);}draw();
 }else if(parseInt(elDb.value,10)!==expected){elDb.value=expected;}
 }
+refreshDbLenFieldVisual();
 if(state.candles.length){
 refreshStatus();
 if(!drag&&!dragY&&!dragX&&!touchDrag&&!drawState.draggingPoint)draw();
