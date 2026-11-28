@@ -80,7 +80,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
 <div id="chartWrap">
 <canvas id="cv"></canvas>
 <div id="ohlc"></div>
-<div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40 · US: NVDA AMZN TSLA +330</div>
+<div id="darvas-hint">Darvas: VKCO 24 · AFKS 30 · X5 33 · OZON 39 · SMLT 40 · US: NBIS SNDK NVDA AAPL</div>
 <div id="loading">Загрузка графика…</div>
 </div>
 </div>
@@ -102,7 +102,7 @@ var SEC_URL=BASE+'/securities.json?iss.meta=off&iss.only=securities&securities.c
 /* ====== ИНОСТРАННЫЕ АКЦИИ (Yahoo Finance) ====== */
 var FOREIGN_TICKERS = [
 /* Мегатех + полупроводники + AI */
-'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','QCOM','TXN','MU','AMAT','LRCX','KLAC','ASML','TSM','ARM','MRVL','ON','NXPI','ADI','MCHP','SWKS','ALAB','MPWR','IBM','ACN','INFY','SAP','CTSH','EPAM',
+'AAPL','MSFT','GOOGL','GOOG','AMZN','META','NVDA','TSLA','AVGO','ORCL','CRM','ADBE','AMD','INTC','CSCO','QCOM','TXN','MU','AMAT','LRCX','KLAC','ASML','TSM','ARM','MRVL','ON','NXPI','ADI','MCHP','SWKS','ALAB','MPWR','SNDK','IBM','ACN','INFY','SAP','CTSH','EPAM',
 /* AI-specific + новые AI-компании */
 'PLTR','AI','PATH','BBAI','SOUN','SMCI','NBIS','CRWV','TEM','RDDT','APP','HIMS','OSCR','IREN',
 /* Кибербезопасность + облака */
@@ -142,10 +142,10 @@ var FOREIGN_TICKERS = [
 /* ETF */
 'SPY','QQQ','IWM','DIA','VTI','VOO','EEM','EFA','AGG','BND','TLT','GLD','SLV','ARKK','SOXX','SMH','XLE','XLF','XLK','XLV','TQQQ','SQQQ','ARKX','UFO',
 /* Солнце/EV-зарядки */
-'ENPH','SEDG','FSLR','RUN','PLUG','BE','CHPT','BLNK','MU','AMAT','LRCX','KLAC','ASML','TSM','ARM','MRVL','ON','NXPI','ADI','MCHP','SWKS','ALAB','MPWR','SNDK',
+'ENPH','SEDG','FSLR','RUN','PLUG','BE','CHPT','BLNK'
 ];
 
-var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['SMLT']];
+var PRIORITY_GROUPS=[['VKCO'],['OZON'],['AFKS'],['X5','FIVE'],['NBIS','SNDK','NVDA','AAPL']];
 
 var DB_DEFAULTS={
 VKCO:24,
@@ -205,7 +205,7 @@ return 1000;
 }
 
 /* ====== Yahoo Finance ====== */
-/* Исправлено: 2ч и 4ч теперь берут нативные дневки (без битых склеек) */
+/* Исправлено: 2ч и 4ч берут нативные дневки (без битых склеек) */
 var YAHOO_INTERVAL_MAP={
 '10m': '5m','15m': '15m','30m': '30m','1h': '60m','2h': '1d','4h': '1d',
 '1d': '1d','1w': '1wk','1M': '1mo'
